@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design System DRPCommerce</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/index.css">
+<style>
+  /* Estilos exclusivos desta página de preview — não fazem parte do sistema. */
+  .pv-section { scroll-margin-top: 80px; }
+  .pv-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--ds-space-3); }
+  .pv-swatch { border-radius: var(--ds-radius-lg); overflow: hidden; border: 1px solid var(--ds-border-subtle); }
+  .pv-swatch__chip { height: 64px; }
+  .pv-swatch__meta { padding: var(--ds-space-2) var(--ds-space-3); background: var(--ds-surface-raised); }
+  .pv-code { font-family: var(--ds-font-mono); font-size: var(--ds-text-2xs); color: var(--ds-text-secondary); }
+  .pv-row { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); align-items: center; }
+  .pv-head { position: sticky; top: 0; z-index: 10; background: var(--ds-surface-canvas); }
+</style>
+</head>
+<body>
+<a href="#main" class="ds-skip-link">Pular para o conteúdo</a>
+
+<header class="ds-topbar pv-head">
+  <a class="ds-topbar__brand" href="#main">
+    drp<span style="font-weight:300; color: var(--ds-text-secondary)">commerce ds</span>
+  </a>
+  <nav class="ds-nav" aria-label="Seções">
+    <a class="ds-nav__item" href="#cor" aria-current="page">Cor</a>
+    <a class="ds-nav__item" href="#tipo">Tipografia</a>
+    <a class="ds-nav__item" href="#comp">Componentes</a>
+  </nav>
+  <button class="ds-btn ds-btn--secondary ds-btn--sm" id="theme-toggle">Tema escuro</button>
+</header>
+
+<main id="main" tabindex="-1" class="ds-container ds-stack--12" style="padding-block: var(--ds-space-8) var(--ds-space-20)">
+
+  <section class="ds-stack--3">
+    <span class="ds-label-caps">Design System</span>
+    <h1 class="ds-display">Derivado do Stratus CRM</h1>
+    <p class="ds-text-secondary" style="max-width: 65ch">
+      Superfície clara, azul-periwinkle como cor de bloco, coral para urgência e tinta para ação.
+      Esta página é o teste de fumaça visual do sistema — se algo aqui parece errado, o token está errado.
+    </p>
+  </section>
+
+  <!-- ---------------------------------------------------------------- COR -->
+  <section class="pv-section ds-stack--5" id="cor">
+    <h2 class="ds-title">Cor</h2>
+
+    <div class="ds-stack--3">
+      <span class="ds-label-caps">Superfícies e marca</span>
+      <div class="pv-swatches">
+        <div class="pv-swatch"><div class="pv-swatch__chip" style="background: var(--ds-surface-canvas)"></div><div class="pv-swatch__meta"><div>canvas</div><div class="pv-code">--ds-surface-canvas</div></div></div>
+        <div class="pv-swatch"><div class="pv-swatch__chip" style="background: var(--ds-surface-raised)"></div><div class="pv-swatch__meta"><div>raised</div><div class="pv-code">--ds-surface-raised</div></div></div>
+        <div class="pv-swatch"><div class="pv-swatch__chip" style="background: var(--ds-surface-inverse)"></div><div class="pv-swatch__meta"><div>inverse</div><div class="pv-code">#2A292E</div></div></div>
+        <div class="pv-swatch"><div class="pv-swatch__chip" style="background: var(--ds-surface-brand)"></div><div class="pv-swatch__meta"><div>brand</div><div class="pv-code">#83A2DB</div></div></div>
+        <div class="pv-swatch"><div class="pv-swatch__chip" style="background: var(--ds-coral-400)"></div><div class="pv-swatch__meta"><div>coral</div><div class="pv-code">#FD8E8C</div></div></div>
+        <div class="pv-swatch"><div class="pv-swatch__chip" style="background: var(--ds-amber-300)"></div><div class="pv-swatch__meta"><div>âmbar</div><div class="pv-code">#FFE880</div></div></div>
+      </div>
+    </div>
+
+    <div class="ds-card ds-stack--3">
+      <div class="ds-card__header"><h3 class="ds-card__title">Texto — todos ≥ 4.5:1</h3></div>
+      <p>Texto primário em <code class="pv-code">--ds-text-primary</code> (14.45:1)</p>
+      <p class="ds-text-secondary">Texto secundário (5.32:1)</p>
+      <p class="ds-text-brand">Link de marca — #4A6FB5 (4.97:1)</p>
+      <p class="ds-text-danger">Erro / urgência — #C5453F (4.91:1)</p>
+      <p class="ds-text-success">Sucesso — #1F7A5C (5.25:1)</p>
+      <hr class="ds-divider">
+      <p style="color: var(--ds-blue-400)">Azul de marca como texto: 2.58:1 — <strong>proibido</strong>. Use só como superfície.</p>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- TIPOGRAFIA -->
+  <section class="pv-section ds-stack--5" id="tipo">
+    <h2 class="ds-title">Tipografia</h2>
+    <div class="ds-card ds-stack--4">
+      <div class="ds-display">Display 36 · Poppins 500</div>
+      <h1>Heading 1 — 30px</h1>
+      <h2>Heading 2 — 24px</h2>
+      <h3>Heading 3 — 20px</h3>
+      <p>Corpo 14px em Inter. Hierarquia por tamanho e cor, nunca por peso pesado.</p>
+      <p class="ds-text-xs ds-text-secondary">Rótulo 12px secundário</p>
+      <span class="ds-label-caps">Overline 11px caixa alta</span>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------- COMPONENTES -->
+  <section class="pv-section ds-stack--6" id="comp">
+    <h2 class="ds-title">Componentes</h2>
+
+    <div class="ds-card ds-stack--5">
+      <div class="ds-card__header"><h3 class="ds-card__title">Botões</h3></div>
+      <div class="pv-row">
+        <button class="ds-btn ds-btn--primary">Entrar na fila</button>
+        <button class="ds-btn ds-btn--secondary">Voltar</button>
+        <button class="ds-btn ds-btn--ghost">Detalhes</button>
+        <button class="ds-btn ds-btn--brand">CTA de marca</button>
+        <button class="ds-btn ds-btn--danger">Sair da fila</button>
+        <button class="ds-btn ds-btn--primary" disabled>Indisponível</button>
+      </div>
+      <div class="pv-row">
+        <button class="ds-btn ds-btn--primary ds-btn--sm">Pequeno</button>
+        <button class="ds-btn ds-btn--primary ds-btn--lg">Grande</button>
+        <button class="ds-btn ds-btn--primary" aria-busy="true"><span class="ds-spinner"></span> Processando</button>
+        <button class="ds-icon-btn" aria-label="Atualizar">↻</button>
+        <button class="ds-icon-btn ds-icon-btn--solid" aria-label="Adicionar">+</button>
+      </div>
+    </div>
+
+    <div class="ds-card ds-stack--4">
+      <div class="ds-card__header"><h3 class="ds-card__title">Status</h3></div>
+      <div class="pv-row">
+        <span class="ds-badge ds-badge--live"><span class="ds-badge__dot"></span>AO VIVO</span>
+        <span class="ds-badge ds-badge--waiting"><span class="ds-badge__dot"></span>Na fila</span>
+        <span class="ds-badge ds-badge--scheduled">Em breve</span>
+        <span class="ds-badge ds-badge--done">Encerrado</span>
+        <span class="ds-badge ds-badge--success">Pedido confirmado</span>
+        <span class="ds-badge ds-badge--inverse">Prioritário</span>
+      </div>
+    </div>
+
+    <div class="ds-grid ds-grid--2">
+      <div class="ds-card ds-stack--5">
+        <div class="ds-card__header">
+          <h3 class="ds-card__title">Sua posição na fila</h3>
+          <span class="ds-badge ds-badge--waiting"><span class="ds-badge__dot"></span>Aguardando</span>
+        </div>
+        <div class="ds-stat ds-stat--lg">
+          <div class="ds-stat__value">127<span class="ds-stat__unit">º</span></div>
+          <div class="ds-stat__label">de 1.842 na fila · ≈ 4 min</div>
+        </div>
+        <div class="ds-avatar-group" aria-label="Pessoas à sua frente">
+          <span class="ds-avatar">AR</span>
+          <span class="ds-avatar">MC</span>
+          <span class="ds-avatar ds-avatar--ring-live">JP</span>
+          <span class="ds-avatar">LS</span>
+          <span class="ds-avatar">+1838</span>
+        </div>
+      </div>
+
+      <div class="ds-card ds-card--inverse ds-stack--5">
+        <div class="ds-card__header"><h3 class="ds-card__title">Checkout expira em</h3></div>
+        <div class="ds-stat ds-stat--lg">
+          <div class="ds-stat__value ds-numeric">04:37</div>
+          <div class="ds-stat__label">Finalize antes do tempo acabar</div>
+        </div>
+        <button class="ds-btn ds-btn--primary ds-btn--lg ds-btn--block" style="background:#fff;color:#1A1A1F">Finalizar compra</button>
+      </div>
+    </div>
+
+    <div class="ds-card ds-stack--5">
+      <div class="ds-card__header"><h3 class="ds-card__title">Estoque</h3></div>
+      <div class="ds-meter"><div class="ds-meter__fill" style="width: 34%"></div></div>
+      <div class="ds-progress">
+        <span class="ds-progress__seg ds-progress__seg--1" style="width: 42%"></span>
+        <span class="ds-progress__seg ds-progress__seg--3" style="width: 8%"></span>
+        <span class="ds-progress__seg" style="width: 50%"></span>
+      </div>
+      <div class="ds-stat-grid">
+        <div class="ds-stat"><div class="ds-stat__value">34<span class="ds-stat__unit">un.</span></div><div class="ds-stat__label">Disponível</div></div>
+        <div class="ds-stat ds-stat--critical"><div class="ds-stat__value">8<span class="ds-stat__unit">un.</span></div><div class="ds-stat__label">Reservado</div></div>
+        <div class="ds-stat"><div class="ds-stat__value">58<span class="ds-stat__unit">un.</span></div><div class="ds-stat__label">Vendido</div></div>
+      </div>
+    </div>
+
+    <div class="ds-grid ds-grid--2">
+      <div class="ds-card ds-stack--4">
+        <div class="ds-card__header"><h3 class="ds-card__title">Formulário</h3></div>
+        <div class="ds-field">
+          <label class="ds-label" for="pv-email">E-mail</label>
+          <input class="ds-input" id="pv-email" type="email" placeholder="voce@exemplo.com">
+          <span class="ds-hint">Enviaremos a confirmação do pedido aqui.</span>
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="pv-cpf">CPF</label>
+          <input class="ds-input" id="pv-cpf" value="000.000.000-00" aria-invalid="true" aria-describedby="pv-cpf-err">
+          <span class="ds-error" id="pv-cpf-err">CPF inválido.</span>
+        </div>
+      </div>
+
+      <div class="ds-card ds-card--flush">
+        <table class="ds-table">
+          <caption class="ds-sr-only">Pedidos recentes</caption>
+          <thead><tr><th scope="col">Produto</th><th scope="col">Status</th><th scope="col" class="ds-table__th--numeric">Valor</th></tr></thead>
+          <tbody>
+            <tr><td>Hoodie Drop 01</td><td><span class="ds-badge ds-badge--success">Confirmado</span></td><td class="ds-table__td--numeric">R$ 499,00</td></tr>
+            <tr><td>Sneaker Drop 02</td><td><span class="ds-badge ds-badge--live"><span class="ds-badge__dot"></span>Ao vivo</span></td><td class="ds-table__td--numeric">R$ 1.299,00</td></tr>
+            <tr><td>Keyboard Drop 03</td><td><span class="ds-badge ds-badge--done">Encerrado</span></td><td class="ds-table__td--numeric">R$ 899,00</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="ds-grid ds-grid--3">
+      <div class="ds-card">
+        <div class="ds-card__header"><h3 class="ds-card__title">Donut</h3></div>
+        <div class="ds-donut-wrap">
+          <svg class="ds-donut" width="128" height="128" viewBox="0 0 128 128" aria-hidden="true">
+            <circle class="ds-donut__track" cx="64" cy="64" r="52" stroke-width="10"></circle>
+            <circle class="ds-donut__arc ds-donut__arc--1" cx="64" cy="64" r="52" stroke-width="10" stroke-dasharray="222 327"></circle>
+          </svg>
+          <div class="ds-donut-wrap__center">
+            <span class="ds-stat__value" style="font-size: var(--ds-text-2xl)">68%</span>
+            <span class="ds-stat__label">vendido</span>
+          </div>
+        </div>
+      </div>
+      <div class="ds-card ds-stack--3">
+        <div class="ds-card__header"><h3 class="ds-card__title">Carregando</h3></div>
+        <div class="ds-skeleton" style="height: 20px; width: 50%"></div>
+        <div class="ds-skeleton" style="height: 36px; width: 70%"></div>
+        <div class="ds-skeleton" style="height: 12px; width: 90%"></div>
+      </div>
+      <div class="ds-card ds-card--sunken">
+        <div class="ds-empty">
+          <span style="font-size: 28px" aria-hidden="true">◎</span>
+          <p>Nenhum drop ativo agora.</p>
+          <button class="ds-btn ds-btn--secondary ds-btn--sm">Ver próximos drops</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const btn = document.getElementById('theme-toggle');
+  const root = document.documentElement;
+  btn.addEventListener('click', () => {
+    const dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    btn.textContent = dark ? 'Tema escuro' : 'Tema claro';
+  });
+</script>
+</body>
+</html>

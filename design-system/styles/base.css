@@ -1,0 +1,147 @@
+/* ============================================================================
+   DS — BASE: reset enxuto + tipografia + acessibilidade
+   Depende de ../tokens/tokens.css
+   ============================================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--ds-surface-canvas);
+  color: var(--ds-text-primary);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-md);
+  line-height: var(--ds-leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums; /* números não "dançam" em countdown/contadores */
+}
+
+img,
+picture,
+svg,
+video,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: inherit; /* botão "de texto" (ex.: título clicável) alinha como o texto ao redor */
+}
+
+a {
+  color: var(--ds-text-brand);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+ul[role='list'],
+ol[role='list'] {
+  list-style: none;
+}
+
+/* --- Tipografia ------------------------------------------------------------
+   Hierarquia por TAMANHO e COR, não por peso. Nada acima de 600.           */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--ds-font-display);
+  font-weight: var(--ds-weight-medium);
+  letter-spacing: var(--ds-tracking-tight);
+  line-height: var(--ds-leading-snug);
+  color: var(--ds-text-primary);
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--ds-text-4xl); line-height: var(--ds-leading-tight); }
+h2 { font-size: var(--ds-text-3xl); }
+h3 { font-size: var(--ds-text-2xl); }
+h4 { font-size: var(--ds-text-xl); }
+h5 { font-size: var(--ds-text-lg); }
+h6 { font-size: var(--ds-text-md); font-weight: var(--ds-weight-semibold); }
+
+p { text-wrap: pretty; }
+
+small { font-size: var(--ds-text-xs); color: var(--ds-text-secondary); }
+
+code, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
+
+/* --- Foco ------------------------------------------------------------------
+   Um único padrão de foco no sistema inteiro. Nunca remova sem substituir. */
+
+:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--ds-radius-xs);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Alvos de foco programático (ex.: <main tabindex="-1"> do skip link) não são
+   interativos: recebem o foco, mas sem anel. */
+[tabindex='-1']:focus {
+  outline: none;
+}
+
+::selection {
+  background: var(--ds-surface-brand-subtle);
+  color: var(--ds-text-primary);
+}
+
+/* --- Scrollbar — discreta, neutra, nunca colorida de marca --------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ds-border-strong) transparent;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--ds-border-strong);
+  border-radius: var(--ds-radius-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ds-text-tertiary); }
+
+/* --- Movimento reduzido --------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

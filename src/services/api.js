@@ -29,7 +29,7 @@ const defaultSimSettings = {
       name: "Veloce Cyber Edition S-X1",
       slug: "veloce-cyber-edition-s-x1",
       description: "Protótipo conceitual de alta costura com sola de carbono responsiva, detalhamento estético em polímero neon reativo e microchips de rastreabilidade na blockchain. Apenas 100 unidades produzidas.",
-      coverImageUrl: "/drop_sneaker.png",
+      coverImageUrl: "/drop_sneaker.jpg",
       price: 299.90,
       unitsAllocated: 100,
       unitsSold: 38,
@@ -43,7 +43,7 @@ const defaultSimSettings = {
       name: "Veloce Hype Hoodie V2",
       slug: "veloce-hype-hoodie-v2",
       description: "Moletom oversized em algodão egípcio de alta gramatura, com capuz duplo estruturado e estamparia termocrômica reativa que muda de cor conforme a temperatura corporal.",
-      coverImageUrl: "/drop_hoodie.png",
+      coverImageUrl: "/drop_hoodie.jpg",
       price: 189.90,
       unitsAllocated: 50,
       unitsSold: 12,
@@ -57,7 +57,7 @@ const defaultSimSettings = {
       name: "CyberBoard RGB Keyboard",
       slug: "cyberboard-rgb-keyboard",
       description: "Teclado mecânico hot-swappable em alumínio anodizado, com switches lineares lubrificados de fábrica, keycaps em policarbonato translúcido e iluminação RGB customizável.",
-      coverImageUrl: "/drop_keyboard.png",
+      coverImageUrl: "/drop_keyboard.jpg",
       price: 449.90,
       unitsAllocated: 30,
       unitsSold: 5,
@@ -74,6 +74,15 @@ let simSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.SIM_SETTINGS)) ||
 if (!simSettings.events || !simSettings.events[1] || !simSettings.events[2]) {
   simSettings = defaultSimSettings;
 }
+
+// Dados de catálogo vêm sempre do código; do localStorage só o estado da simulação
+// (tempo, fila, vendas). Assim, trocar imagem, nome ou preço aqui vale sem limpar o navegador.
+const CATALOG_FIELDS = ['name', 'slug', 'description', 'coverImageUrl', 'price'];
+Object.values(defaultSimSettings.events).forEach((defaults) => {
+  const saved = simSettings.events[defaults.id];
+  if (!saved) return;
+  CATALOG_FIELDS.forEach((field) => { saved[field] = defaults[field]; });
+});
 
 let apiLogs = [];
 const logListeners = new Set();
@@ -121,6 +130,20 @@ const createEnvelope = (isSuccess, content, errors = []) => ({
 export const getVirtualTime = () => {
   return new Date(Date.now() + simSettings.simulatedTimeOffset);
 };
+
+// Catálogo regular da vitrine (cliente casual, sem fila). Formato do produto do
+// StoreCommerce; imageUrl é opcional: sem imagem, o card mostra um placeholder.
+// Imagens em public/vitrine_*.jpg.
+const storeCatalog = [
+  { id: 101, name: "Tênis Canvas Hi", sku: "VLC-TEN-101", category: "Tênis", description: "Cano alto em lona, biqueira de borracha e solado vulcanizado. Ilhoses metálicos e cadarço de algodão.", price: 349.90, stockQuantity: 42, imageUrl: "/vitrine_cano_alto.jpg", isActive: true },
+  { id: 102, name: "Tênis Court Low", sku: "VLC-TEN-102", category: "Tênis", description: "Cano baixo em camurça e couro, palmilha acolchoada e solado de borracha em contraste.", price: 279.90, stockQuantity: 4, imageUrl: "/vitrine_cano_baixo.jpg", isActive: true },
+  { id: 103, name: "Moletom Zip Hoodie", sku: "VLC-MOL-103", category: "Vestuário", description: "Moletom flanelado com zíper frontal, capuz com cordão e bolsos laterais.", price: 219.90, stockQuantity: 18, imageUrl: "/vitrine_moletom.jpg", isActive: true },
+  { id: 104, name: "Camiseta Oversized Stonewashed", sku: "VLC-CAM-104", category: "Vestuário", description: "Algodão de gramatura alta com lavagem estonada, modelagem ampla e gola canelada.", price: 99.90, stockQuantity: 60, imageUrl: "/vitrine_oversized.jpg", isActive: true },
+  { id: 105, name: "Calça Cargo Jeans Wide", sku: "VLC-CAL-105", category: "Vestuário", description: "Jeans com lavagem estonada, cós com elástico, perna ampla e bolsos cargo laterais.", price: 259.90, stockQuantity: 0, imageUrl: "/vitrine_cargo.jpg", isActive: true },
+  { id: 106, name: "Boné Destroyed Star", sku: "VLC-BON-106", category: "Acessórios", description: "Sarja estonada com estrelas aplicadas, costuras aparentes e aba com acabamento puído.", price: 89.90, stockQuantity: 25, imageUrl: "/vitrine_bone.jpg", isActive: true },
+  { id: 107, name: "Mochila Classic", sku: "VLC-MOC-107", category: "Acessórios", description: "Poliéster resistente, compartimento principal amplo e bolso frontal com zíper.", price: 229.90, stockQuantity: 9, imageUrl: "/vitrine_mochila.jpg", isActive: true },
+  { id: 108, name: "Mousepad XL Art", sku: "VLC-MPD-108", category: "Periféricos", description: "Estampa ilustrada em tecido de deslize suave, base emborrachada antiderrapante e bordas costuradas.", price: 129.90, stockQuantity: 33, imageUrl: "/vitrine_mousepad.jpg", isActive: true },
+];
 
 export const api = {
   
@@ -488,6 +511,67 @@ export const api = {
         addApiLog('POST', url, orderData, 500, { message: err.message });
         throw err;
       }
+    }
+  },
+
+  async getStoreProducts() {
+    const url = `/api/store/products/get-all`;
+
+    if (simSettings.isSimulationMode) {
+      await delay(simSettings.networkLatency);
+      const response = createEnvelope(true, storeCatalog.filter((p) => p.isActive));
+      addApiLog('GET', url, null, 200, response);
+      return response;
+    }
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      addApiLog('GET', url, null, res.status, data);
+      return data;
+    } catch (err) {
+      addApiLog('GET', url, null, 500, { message: err.message });
+      throw err;
+    }
+  },
+  // Pedido da vitrine (sem fila): valida estoque, baixa as unidades e devolve o pedido.
+  async createStoreOrder(items) {
+    const url = `/api/store/orders/add`;
+    const payload = { items };
+
+    if (simSettings.isSimulationMode) {
+      await delay(simSettings.networkLatency * 1.5);
+      const lines = items.map(({ productId, quantity }) => ({ product: storeCatalog.find((p) => p.id === productId), quantity }));
+      const unavailable = lines.find(({ product, quantity }) => !product || product.stockQuantity < quantity);
+      if (unavailable) {
+        const errorRes = createEnvelope(false, null, [`Estoque insuficiente para ${unavailable.product?.name ?? 'um dos itens'}.`]);
+        addApiLog('POST', url, payload, 409, errorRes);
+        return errorRes;
+      }
+      lines.forEach(({ product, quantity }) => { product.stockQuantity -= quantity; });
+      const subTotal = lines.reduce((sum, { product, quantity }) => sum + product.price * quantity, 0);
+      const shippingCost = 20.00;
+      const order = {
+        id: Math.floor(Math.random() * 900000) + 100000,
+        items: lines.map(({ product, quantity }) => ({ productId: product.id, name: product.name, quantity, unitPrice: product.price })),
+        subTotal,
+        shippingCost,
+        totalAmount: subTotal + shippingCost,
+        createdAt: new Date().toISOString(),
+      };
+      const response = createEnvelope(true, order);
+      addApiLog('POST', url, payload, 201, response);
+      return response;
+    }
+
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      addApiLog('POST', url, payload, res.status, data);
+      return data;
+    } catch (err) {
+      addApiLog('POST', url, payload, 500, { message: err.message });
+      throw err;
     }
   }
 };

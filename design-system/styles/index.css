@@ -1,0 +1,11 @@
+/* ============================================================================
+   DRPCommerce Design System — ponto de entrada único.
+
+   Uso no app:  import "../design-system/styles/index.css";  (em src/main.jsx)
+   A ordem importa: tokens -> base -> componentes -> utilitarios.
+   ============================================================================ */
+
+@import '../tokens/tokens.css';
+@import './base.css';
+@import './components.css';
+@import './utilities.css';

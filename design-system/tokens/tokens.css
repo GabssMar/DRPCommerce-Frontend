@@ -1,0 +1,358 @@
+/* ============================================================================
+   DRPCommerce Design System — TOKENS
+   Gerado a partir de tokens/tokens.json. Não edite valores aqui sem atualizar
+   o JSON (e tokens.js, se a cor for usada em gráficos).
+   Base visual: Stratus CRM — ver ../ANALYSIS.md
+   ============================================================================ */
+
+:root {
+  /* --- 1. PRIMITIVOS ------------------------------------------------------
+     Não use em componentes. Use os semânticos da seção 2.                  */
+
+  --ds-ink-50:  #EDEEF0;
+  --ds-ink-100: #E7E8E9;
+  --ds-ink-200: #D4D4DA;
+  --ds-ink-300: #B4B4BC;
+  --ds-ink-400: #8A8A93;
+  --ds-ink-500: #6B6B73;
+  --ds-ink-600: #55545C;
+  --ds-ink-700: #3C3B42;
+  --ds-ink-800: #2A292E;
+  --ds-ink-900: #1A1A1F;
+  --ds-ink-950: #111114;
+  --ds-white:   #FFFFFF;
+
+  --ds-blue-50:  #F2F5FB;
+  --ds-blue-100: #E4EAF7;
+  --ds-blue-200: #C7D5EE;
+  --ds-blue-300: #A5BCE4;
+  --ds-blue-400: #83A2DB; /* MARCA — superfície apenas (2.58:1 em branco) */
+  --ds-blue-500: #6B8CCB;
+  --ds-blue-600: #4A6FB5; /* texto de marca (4.97:1) */
+  --ds-blue-700: #3A5793;
+  --ds-blue-800: #2B4070;
+
+  --ds-coral-50:  #FFF2F2;
+  --ds-coral-100: #FFE2E1;
+  --ds-coral-200: #FEC7C6;
+  --ds-coral-300: #FEAAA9;
+  --ds-coral-400: #FD8E8C; /* urgência — superfície apenas (2.23:1) */
+  --ds-coral-500: #F26B68;
+  --ds-coral-600: #C5453F; /* texto de urgência (4.91:1) */
+  --ds-coral-700: #97322D;
+
+  --ds-amber-100: #FFF6D6;
+  --ds-amber-300: #FFE880;
+  --ds-amber-500: #E8B93F;
+  --ds-amber-700: #8A6508; /* texto de alerta (5.32:1) */
+
+  --ds-green-100: #DFF3EB; /* [extensão] */
+  --ds-green-400: #5FBF9B;
+  --ds-green-600: #1F7A5C; /* texto de sucesso (5.25:1) */
+
+  /* --- 2. SEMÂNTICOS (tema claro) ---------------------------------------- */
+
+  --ds-surface-canvas:       var(--ds-ink-50);
+  --ds-surface-raised:       var(--ds-white);
+  --ds-surface-sunken:       var(--ds-ink-100);
+  --ds-surface-inverse:      var(--ds-ink-800);
+  --ds-surface-brand:        var(--ds-blue-400);
+  --ds-surface-brand-subtle: var(--ds-blue-100);
+  --ds-surface-overlay:      rgba(26, 26, 31, 0.45);
+
+  --ds-text-primary:   var(--ds-ink-800);
+  --ds-text-secondary: var(--ds-ink-500);
+  --ds-text-tertiary:  var(--ds-ink-400);
+  --ds-text-inverse:   var(--ds-white);
+  --ds-text-brand:     var(--ds-blue-600);
+  --ds-text-danger:    var(--ds-coral-600);
+  --ds-text-danger-on-inverse: var(--ds-coral-300); /* urgência sobre --ds-surface-inverse */
+  --ds-text-warning:   var(--ds-amber-700);
+  --ds-text-success:   var(--ds-green-600);
+
+  --ds-border-subtle:  var(--ds-ink-100);
+  --ds-border-default: #DCE0E8;
+  --ds-border-strong:  #CAD0DC;
+  --ds-border-focus:   var(--ds-blue-600);
+
+  --ds-action-primary-bg:        var(--ds-ink-800);
+  --ds-action-primary-bg-hover:  var(--ds-ink-900);
+  --ds-action-primary-bg-active: var(--ds-ink-950);
+  --ds-action-primary-fg:        var(--ds-white);
+
+  --ds-action-secondary-bg:       var(--ds-white);
+  --ds-action-secondary-bg-hover: #F5F6F8;
+  --ds-action-secondary-fg:       var(--ds-ink-800);
+
+  --ds-action-ghost-bg-hover: rgba(42, 41, 46, 0.06);
+
+  --ds-action-brand-bg:       var(--ds-blue-600);
+  --ds-action-brand-bg-hover: var(--ds-blue-700);
+  --ds-action-danger-bg:       var(--ds-coral-600);
+  --ds-action-danger-bg-hover: var(--ds-coral-700);
+
+  /* Status — domínio drop/fila */
+  --ds-status-live-fg:  var(--ds-coral-600);
+  --ds-status-live-bg:  var(--ds-coral-100);
+  --ds-status-live-dot: var(--ds-coral-400);
+
+  --ds-status-waiting-fg:  var(--ds-blue-600);
+  --ds-status-waiting-bg:  var(--ds-blue-100);
+  --ds-status-waiting-dot: var(--ds-blue-400);
+
+  --ds-status-scheduled-fg:  var(--ds-amber-700);
+  --ds-status-scheduled-bg:  var(--ds-amber-100);
+  --ds-status-scheduled-dot: var(--ds-amber-300);
+
+  --ds-status-done-fg:  var(--ds-ink-500);
+  --ds-status-done-bg:  var(--ds-ink-100);
+  --ds-status-done-dot: var(--ds-ink-300);
+
+  --ds-status-success-fg:  var(--ds-green-600);
+  --ds-status-success-bg:  var(--ds-green-100);
+  --ds-status-success-dot: var(--ds-green-400);
+
+  /* Gráficos */
+  --ds-chart-1: var(--ds-blue-400);
+  --ds-chart-2: var(--ds-coral-400);
+  --ds-chart-3: var(--ds-amber-300);
+  --ds-chart-4: var(--ds-blue-300);
+  --ds-chart-5: var(--ds-ink-800);
+  --ds-chart-track: var(--ds-ink-100);
+
+  /* --- 3. ESPAÇO --------------------------------------------------------- */
+  --ds-space-0: 0;
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-space-8: 32px;
+  --ds-space-10: 40px;
+  --ds-space-12: 48px;
+  --ds-space-16: 64px;
+  --ds-space-20: 80px;
+
+  /* --- 4. RAIO ----------------------------------------------------------- */
+  --ds-radius-xs:  8px;
+  --ds-radius-sm:  10px;
+  --ds-radius-md:  12px;
+  --ds-radius-lg:  16px;
+  --ds-radius-xl:  20px;
+  --ds-radius-2xl: 24px;
+  --ds-radius-3xl: 32px;
+  --ds-radius-pill: 999px;
+  --ds-radius-circle: 50%;
+
+  /* --- 5. ELEVAÇÃO ------------------------------------------------------- */
+  --ds-shadow-xs: 0 1px 2px rgba(26, 26, 31, 0.06);
+  --ds-shadow-sm: 0 2px 6px rgba(26, 26, 31, 0.06);
+  --ds-shadow-md: 0 4px 16px rgba(26, 26, 31, 0.07), 0 1px 2px rgba(26, 26, 31, 0.04);
+  --ds-shadow-lg: 0 12px 32px rgba(26, 26, 31, 0.10);
+  --ds-shadow-xl: 0 24px 64px rgba(26, 26, 31, 0.12);
+  --ds-ring: 0 0 0 3px rgba(74, 111, 181, 0.28);
+
+  /* --- 6. TIPOGRAFIA ----------------------------------------------------- */
+  --ds-font-display: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+  --ds-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ds-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ds-text-2xs: 11px;
+  --ds-text-xs:  12px;
+  --ds-text-sm:  13px;
+  --ds-text-md:  14px;
+  --ds-text-lg:  16px;
+  --ds-text-xl:  18px;
+  --ds-text-2xl: 20px;
+  --ds-text-3xl: 24px;
+  --ds-text-4xl: 30px;
+  --ds-text-5xl: 36px;
+  --ds-text-6xl: 48px;
+
+  --ds-weight-light: 300;
+  --ds-weight-regular: 400;
+  --ds-weight-medium: 500;
+  --ds-weight-semibold: 600;
+
+  --ds-leading-tight: 1.15;
+  --ds-leading-snug: 1.3;
+  --ds-leading-normal: 1.5;
+  --ds-leading-relaxed: 1.65;
+
+  --ds-tracking-tight: -0.02em;
+  --ds-tracking-wide: 0.02em;
+  --ds-tracking-caps: 0.06em;
+
+  /* --- 7. MOVIMENTO ------------------------------------------------------ */
+  --ds-duration-instant: 80ms;
+  --ds-duration-fast: 120ms;
+  --ds-duration-base: 180ms;
+  --ds-duration-slow: 240ms;
+  --ds-duration-slower: 320ms;
+
+  --ds-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ds-ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+  --ds-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* --- 8. LAYOUT --------------------------------------------------------- */
+  --ds-rail: 72px;
+  --ds-sidebar: 240px;
+  --ds-topbar: 64px;
+  --ds-content-max: 1200px;
+  --ds-shell-max: 1440px;
+  --ds-gutter: 24px;
+  --ds-tap-min: 44px;
+
+  /* --- 9. CAMADAS -------------------------------------------------------- */
+  --ds-z-base: 0;
+  --ds-z-raised: 10;
+  --ds-z-sticky: 100;
+  --ds-z-drawer: 200;
+  --ds-z-modal: 300;
+  --ds-z-toast: 400;
+  --ds-z-tooltip: 500;
+
+  color-scheme: light dark;
+}
+
+/* ============================================================================
+   TEMA ESCURO
+   Só os semânticos mudam — primitivos são imutáveis.
+   Ativação: <html data-theme="dark"> (via setTheme). O app fixa data-theme="light"
+   por padrão; a regra por preferência do SO abaixo só vale sem data-theme.
+   ============================================================================ */
+
+:root[data-theme="dark"] {
+  --ds-surface-canvas:       #17171A;
+  --ds-surface-raised:       #1F1F24;
+  --ds-surface-sunken:       #131316;
+  --ds-surface-inverse:      var(--ds-ink-50);
+  --ds-surface-brand:        var(--ds-blue-400);
+  --ds-surface-brand-subtle: rgba(131, 162, 219, 0.14);
+  --ds-surface-overlay:      rgba(0, 0, 0, 0.6);
+
+  --ds-text-primary:   #F2F2F4;
+  --ds-text-secondary: #A0A0A9;
+  --ds-text-tertiary:  #7C7C85;
+  --ds-text-inverse:   var(--ds-ink-900);
+  --ds-text-brand:     var(--ds-blue-300);
+  --ds-text-danger:    var(--ds-coral-300);
+  --ds-text-danger-on-inverse: var(--ds-coral-600);
+  --ds-text-warning:   var(--ds-amber-300);
+  --ds-text-success:   var(--ds-green-400);
+
+  --ds-border-subtle:  rgba(255, 255, 255, 0.07);
+  --ds-border-default: rgba(255, 255, 255, 0.12);
+  --ds-border-strong:  rgba(255, 255, 255, 0.20);
+  --ds-border-focus:   var(--ds-blue-300);
+
+  --ds-action-primary-bg:        var(--ds-white);
+  --ds-action-primary-bg-hover:  var(--ds-ink-50);
+  --ds-action-primary-bg-active: var(--ds-ink-200);
+  --ds-action-primary-fg:        var(--ds-ink-900);
+
+  --ds-action-secondary-bg:       rgba(255, 255, 255, 0.06);
+  --ds-action-secondary-bg-hover: rgba(255, 255, 255, 0.10);
+  --ds-action-secondary-fg:       #F2F2F4;
+
+  --ds-action-ghost-bg-hover: rgba(255, 255, 255, 0.08);
+
+  --ds-action-brand-bg:       var(--ds-blue-500);
+  --ds-action-brand-bg-hover: var(--ds-blue-400);
+  --ds-action-danger-bg:       var(--ds-coral-500);
+  --ds-action-danger-bg-hover: var(--ds-coral-600);
+
+  --ds-status-live-fg:  var(--ds-coral-300);
+  --ds-status-live-bg:  rgba(253, 142, 140, 0.16);
+  --ds-status-waiting-fg: var(--ds-blue-300);
+  --ds-status-waiting-bg: rgba(131, 162, 219, 0.16);
+  --ds-status-scheduled-fg: var(--ds-amber-300);
+  --ds-status-scheduled-bg: rgba(255, 232, 128, 0.14);
+  --ds-status-done-fg: #A0A0A9;
+  --ds-status-done-bg: rgba(255, 255, 255, 0.08);
+  --ds-status-success-fg: var(--ds-green-400);
+  --ds-status-success-bg: rgba(95, 191, 155, 0.16);
+
+  --ds-chart-track: rgba(255, 255, 255, 0.10);
+
+  --ds-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ds-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --ds-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --ds-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --ds-shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --ds-ring: 0 0 0 3px rgba(165, 188, 228, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ds-surface-canvas:       #17171A;
+    --ds-surface-raised:       #1F1F24;
+    --ds-surface-sunken:       #131316;
+    --ds-surface-inverse:      var(--ds-ink-50);
+    --ds-surface-brand-subtle: rgba(131, 162, 219, 0.14);
+    --ds-surface-overlay:      rgba(0, 0, 0, 0.6);
+
+    --ds-text-primary:   #F2F2F4;
+    --ds-text-secondary: #A0A0A9;
+    --ds-text-tertiary:  #7C7C85;
+    --ds-text-inverse:   var(--ds-ink-900);
+    --ds-text-brand:     var(--ds-blue-300);
+    --ds-text-danger:    var(--ds-coral-300);
+    --ds-text-danger-on-inverse: var(--ds-coral-600);
+    --ds-text-warning:   var(--ds-amber-300);
+    --ds-text-success:   var(--ds-green-400);
+
+    --ds-border-subtle:  rgba(255, 255, 255, 0.07);
+    --ds-border-default: rgba(255, 255, 255, 0.12);
+    --ds-border-strong:  rgba(255, 255, 255, 0.20);
+    --ds-border-focus:   var(--ds-blue-300);
+
+    --ds-action-primary-bg:        var(--ds-white);
+    --ds-action-primary-bg-hover:  var(--ds-ink-50);
+    --ds-action-primary-bg-active: var(--ds-ink-200);
+    --ds-action-primary-fg:        var(--ds-ink-900);
+
+    --ds-action-secondary-bg:       rgba(255, 255, 255, 0.06);
+    --ds-action-secondary-bg-hover: rgba(255, 255, 255, 0.10);
+    --ds-action-secondary-fg:       #F2F2F4;
+
+    --ds-action-ghost-bg-hover: rgba(255, 255, 255, 0.08);
+
+    --ds-action-brand-bg:       var(--ds-blue-500);
+    --ds-action-brand-bg-hover: var(--ds-blue-400);
+    --ds-action-danger-bg:       var(--ds-coral-500);
+    --ds-action-danger-bg-hover: var(--ds-coral-600);
+
+    --ds-status-live-fg:  var(--ds-coral-300);
+    --ds-status-live-bg:  rgba(253, 142, 140, 0.16);
+    --ds-status-waiting-fg: var(--ds-blue-300);
+    --ds-status-waiting-bg: rgba(131, 162, 219, 0.16);
+    --ds-status-scheduled-fg: var(--ds-amber-300);
+    --ds-status-scheduled-bg: rgba(255, 232, 128, 0.14);
+    --ds-status-done-fg: #A0A0A9;
+    --ds-status-done-bg: rgba(255, 255, 255, 0.08);
+    --ds-status-success-fg: var(--ds-green-400);
+    --ds-status-success-bg: rgba(95, 191, 155, 0.16);
+
+    --ds-chart-track: rgba(255, 255, 255, 0.10);
+
+    --ds-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --ds-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.4);
+    --ds-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+    --ds-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+    --ds-shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.55);
+    --ds-ring: 0 0 0 3px rgba(165, 188, 228, 0.35);
+  }
+}
+
+/* Densidade compacta — telas pequenas e superfícies densas (fila, checkout). */
+@media (max-width: 768px) {
+  :root {
+    --ds-space-6: 20px;
+    --ds-space-8: 24px;
+    --ds-space-10: 32px;
+    --ds-space-12: 40px;
+    --ds-gutter: 16px;
+  }
+}
