@@ -1,6 +1,6 @@
 # Tasks: Design System e integração com o back-end
 
-Dezenove tasks: **00–09** migram o front para Vue e para o Design System; **10–18** conectam o front ao back-end. Cada uma tem o tamanho de **uma funcionalidade / uma PR**. Cada arquivo é o corpo pronto da issue: o título é a primeira linha (`# …`), o resto é a descrição.
+Vinte e sete tasks: **00–09** migram o front para Vue e para o Design System; **10–18** conectam o front ao back-end; **19–26** entregam o **painel do administrador da loja**. Cada uma tem o tamanho de **uma funcionalidade / uma PR**. Cada arquivo é o corpo pronto da issue: o título é a primeira linha (`# …`), o resto é a descrição.
 
 Destino: [Project 1 de joseHenrique346](https://github.com/users/joseHenrique346/projects/1/views/1), coluna **Design**.
 
@@ -57,6 +57,34 @@ Problemas encontrados no levantamento (detalhes nas tasks):
 - O front chama rotas que não existem (`/api/drop-event/GetAll`…) e trata `statusId` com significados diferentes do back (task 15)
 - O back não tem regra de fila nem de checkout: o CRUD aceita posição, status e totais vindos do navegador (tasks 12–14)
 
+## Série Painel do administrador (19–26)
+
+O terceiro módulo do produto, ao lado de **Drops** e **Vitrine**: a área onde o dono da loja acompanha as vendas e gerencia catálogo, estoque, drops e pedidos.
+
+A regra que organiza a série: **o painel não chama o back-end agora, mas nasce pronto para chamar.** Cada função da camada de dados declara o endpoint real, o método e o corpo corretos, e um adaptador mock devolve exatamente o mesmo formato — a virada é trocar `VITE_API_MODE=mock` por `http`, sem tocar em componente. O log de requisições do painel mostra, em modo mock, a chamada que *seria* enviada.
+
+| # | Task | Lado | Onde | Depende de |
+|---|---|---|---|---|
+| 19 | Endpoints do admin: controllers do Store, estoque e resumo de vendas | Back | `StoreCommerce.Api`, `Commerce.Gateway`, queries de agregação | 10 |
+| 20 | Componentes do painel: tabela ordenável, paginação, barras temporais, toolbar | DS | `design-system/` | 01 |
+| 21 | Shell do painel: entrada, rail, navegação, separação do storefront | Front | `App.vue`, `router.js`, `AdminShell.vue` | 02 |
+| 22 | Camada de dados: `admin-api` + mock no formato exato do back-end | Front | `src/services/admin/` | 15 |
+| 23 | Dashboard de vendas: KPIs do dia e do mês, curva e ranking | Front | `AdminDashboard.vue` | 20, 21, 22 |
+| 24 | Gestão de drops: lista, edição e mudança de fase | Front | `AdminDrops.vue` | 20, 21, 22 |
+| 25 | Catálogo e estoque da vitrine | Front | `AdminCatalog.vue` | 20, 21, 22 · decisão da 19 §2 |
+| 26 | Pedidos: lista unificada, detalhe e status | Front | `AdminOrders.vue` | 20, 21, 22 |
+
+**20, 21 e 22 bloqueiam as telas.** As três podem correr em paralelo (DS, shell e serviços não se cruzam), e 23–26 também entre si, em `VITE_API_MODE=mock`. A task 19 corre em paralelo no repositório do back-end e só é necessária na virada.
+
+O que o levantamento no back-end encontrou (detalhes na task 19):
+
+- **O `StoreCommerce.Api` não tem controllers.** Os handlers de `Product`, `Order`, `Category`, `Supplier` e companhia existem e estão completos — falta expô-los. Expor o Store é sobretudo fiação.
+- **`Product` não tem campo de estoque.** O `stockQuantity` que a vitrine exibe hoje é invenção do simulador. Decisão de modelagem pendente na task 19 §2.
+- **Não existe endpoint de agregação de vendas.** Sem `sales-summary`, o dashboard teria que baixar todos os pedidos e somar no navegador.
+- **`get-all` devolve a tabela inteira** — não há listagem paginada nem filtrada para as telas de gestão.
+- **O `PathRemovePrefix` do Gateway quebra as duas rotas**, não só a do Drop: a correção da task 10 precisa valer para `rota_store` também.
+- **Não há autenticação.** O painel só monta em DEV ou com `VITE_ADMIN_ENABLED=true`, e exibe aviso. Não publique com dados reais antes do JWT com papel de administrador.
+
 ## Linha de base medida
 
 Contada no código React em 2026-09-20; inline styles e hex recontados em 2026-09-28, após a task 01. O port da task 00 é 1:1, então os números valem para os `.vue` (`style={{}}` vira `:style`).
@@ -86,7 +114,7 @@ bash create-project-tasks.sh             # cria draft items na coluna Design
 MODE=issue bash create-project-tasks.sh
 ```
 
-As tasks 01–09 já estão no board, com a descrição antiga (React). Para publicar só as novas: `FILES="00-*.md 1[0-8]-*.md" bash create-project-tasks.sh`. As 01–09 precisam ter a descrição atualizada no próprio board. Em `MODE=issue`, as tasks `[API · Back-end]` vão para `BACKEND_REPO` (padrão `joseHenrique346/DRPCommerce-Backend`; confirme o nome).
+As tasks 01–09 já estão no board, com a descrição antiga (React). Para publicar só as novas: `FILES="00-*.md 1[0-8]-*.md" bash create-project-tasks.sh`. Para publicar só a série do painel: `FILES="19-*.md 2[0-6]-*.md" bash create-project-tasks.sh` (a 19 tem título `[API · Back-end]` e, em `MODE=issue`, vai para `$BACKEND_REPO`). As 01–09 precisam ter a descrição atualizada no próprio board. Em `MODE=issue`, as tasks `[API · Back-end]` vão para `BACKEND_REPO` (padrão `joseHenrique346/DRPCommerce-Backend`; confirme o nome).
 
 Se o board usar outro nome de campo para as colunas, o script avisa e lista os disponíveis — rode de novo com `FIELD_NAME="<nome>"`.
 

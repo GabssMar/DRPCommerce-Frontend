@@ -14,7 +14,7 @@ Levantado no código em 2026-09-28 (`backend/DROP-Ecommerce`, `frontend/src/serv
 | Front-end (Vite) | 5173 | SPA Vue. Em dev, faz proxy de `/api` para o Gateway |
 | `Commerce.Gateway` (YARP) | 5000 | Ponto de entrada único. `/api/drop/**` → Drop API, `/api/store/**` → Store API |
 | `DropCommerce.Api` | 5002 | Toda a API consumida pelo front |
-| `StoreCommerce.Api` | 5001 | Catálogo canônico. Consumido **só pelo back-end do Drop** (Refit), nunca pelo front |
+| `StoreCommerce.Api` | 5001 | Catálogo canônico. Consumido pelo back-end do Drop (Refit) e, **pelo Gateway em `/api/store/**`**, pela Vitrine e pelo painel do administrador. Hoje **não tem controllers** (task 19 §1) |
 
 O front chama **sempre o Gateway**. URL base: `VITE_API_BASE_URL`, padrão `/api/drop`.
 
@@ -231,6 +231,81 @@ Catálogo regular, sem fila. Os dados vêm do **StoreCommerce** (pelo Gateway em
 
 > Os nomes de campo seguem o que foi levantado do `Product` do StoreCommerce (`productId`, `name`, `sku`, `isActive`). `category`, `description`, `price`, `stockQuantity` e `imageUrl` são propostas: confirmar com o back-end ao criar o endpoint.
 
+### Painel do administrador (`src/components/admin/`), tasks 19–26
+
+Terceiro módulo do produto. Consome **os dois serviços**: o Drop em `/api/drop/...` e o Store em `/api/store/...`. Nenhum dos endpoints abaixo existe hoje no formato necessário — a task 19 os cria, e a task 22 monta a camada de dados que os declara e um mock com o **mesmo formato**, para a virada `mock → http` não exigir mudança de tela.
+
+#### Dashboard de vendas (`AdminDashboard.vue`)
+
+| Informação na tela | Endpoint | Campo(s) | Situação |
+|---|---|---|---|
+| Vendido hoje / no mês | `GET /drop-orders/sales-summary` e `GET /api/store/orders/sales-summary` | `grossRevenue` | 🆕 task 19 |
+| Pago × pendente | idem | `byPayment[]` (`paymentStatusId` 2 × 1) | 🆕 task 19 |
+| Ticket médio, pedidos, unidades | idem | `averageTicket`, `orderCount`, `unitCount` | 🆕 task 19 |
+| Curva de faturamento | idem | `buckets[]` (`date`, `revenue`, `orderCount`) | 🆕 task 19 |
+| Mais vendidos | idem | `topProducts[]` | 🆕 task 19 |
+| Quebra por status | idem | `byStatus[]` | 🆕 task 19 |
+
+Parâmetros: `from`, `to` (datas locais `YYYY-MM-DD`, inclusivas) e `granularity` (`day` \| `month`).
+
+**Três regras de cálculo que mudam o número na tela**, definidas na task 19 §3 e replicadas pelo mock:
+
+1. O eixo de tempo é `createdAt`, gravado em **UTC**; a agregação por dia converte para `America/Sao_Paulo` antes de agrupar. Sem isso, toda venda depois das 21h cai no dia seguinte.
+2. Pedidos com status `6 Cancelado` ou `7 Reembolsado` **não entram** em nenhuma soma.
+3. `bucket` sem venda existe com zeros — o gráfico não pode ter buraco.
+
+#### Gestão de drops (`AdminDrops.vue`)
+
+| Ação | Endpoint | Situação |
+|---|---|---|
+| Listar | `GET /drop-events/get-paged?page=&pageSize=&statusId=&search=` | 🆕 task 19 §4 (`get-all` ✅ existe, mas devolve a tabela inteira) |
+| Detalhe | `GET /drop-events/get-by-id/{id}` | ✅ existe |
+| Criar / editar | `POST /drop-events/add` · `PUT /drop-events/update` | ✅ existem |
+| Mudar de fase | `PUT /drop-events/update` com `dropEventStatusId` trocado | ✅ existe |
+| Estoque alocado | `GET /drop-products/get-by-event/{id}` · `PUT /drop-products/update` | 🆕 task 11 / ✅ update |
+
+#### Catálogo e estoque (`AdminCatalog.vue`)
+
+| Ação | Endpoint | Situação |
+|---|---|---|
+| Listar produtos | `GET /api/store/products/get-paged` | 🆕 task 19 §1 e §4 |
+| Criar / editar | `POST /api/store/products/add` · `PUT /api/store/products/update` | 🆕 task 19 §1 |
+| Categorias e fornecedores (selects) | `GET /api/store/categories/get-all` · `GET /api/store/suppliers/get-all` | 🆕 task 19 §1 |
+| Ajustar estoque | `POST /api/store/products/adjust-stock` body `{ productId, delta, reason }` | 🆕 task 19 §2 |
+
+> ⚠️ **`Product` do StoreCommerce não tem campo de estoque.** Os campos reais são `enterpriseId`, `categoryId`, `supplierId`, `name`, `slug`, `description`, `sku`, `barCode`, `price`, `costPrice`, `weight`, `height`, `width`, `length`, `brand`, `imageUrls`, `isActive`, `isDigital`. O `stockQuantity` que a Vitrine exibe hoje é invenção do simulador, e `category` lá é **nome**, não `categoryId`. A modelagem do estoque é decisão pendente da task 19 §2 — registre aqui o que for decidido.
+
+#### Pedidos (`AdminOrders.vue`)
+
+| Ação | Endpoint | Situação |
+|---|---|---|
+| Listar (drop) | `GET /drop-orders/get-paged?page=&statusId=&from=&to=&search=` | 🆕 task 19 §4 |
+| Listar (vitrine) | `GET /api/store/orders/get-paged` | 🆕 task 19 §1 e §4 |
+| Detalhe | `GET /drop-orders/get-by-id/{id}` · `GET /api/store/orders/get-by-id/{id}` | ✅ / 🆕 |
+| Itens | `POST /drop-order-items/get-list-by-list-id` · idem no Store | ✅ / 🆕 |
+| Mudar status | `PUT /drop-orders/update` · `PUT /api/store/orders/update` | ✅ / 🆕 |
+
+**As duas entidades não são a mesma.** Campos que divergem e precisam de tradução na camada de dados:
+
+| | `DropOrder` | `Order` (Store) |
+|---|---|---|
+| Status | `dropOrderStatusId` | `orderStatusId` |
+| Pagamento | `dropOrderPaymentStatusId` | `orderPaymentStatusId` |
+| Cupom | `dropCouponId` | `couponId` |
+| UF de entrega | `shippingState` (**string**) | `shippingStateId` (**long**, entidade `State`) |
+| Origem | `dropEventId`, `dropReservationId` | — |
+
+Os **ids de status são idênticos nos dois lados** (mesmo seed): pedido `1 Pendente · 2 Confirmado · 3 Em processamento · 4 Enviado · 5 Entregue · 6 Cancelado · 7 Reembolsado`; pagamento `1 Pendente · 2 Pago · 3 Reembolso parcial · 4 Reembolso total · 5 Falhou`.
+
+#### Duas armadilhas do CRUD que valem para todo o painel
+
+1. **`add` e `update` devolvem lista**, mesmo para um item — o `BaseController` embrulha em `add-range`. O objeto é `content[0]`.
+2. **Não há `PATCH`.** Mudar um campo (fase do drop, status do pedido) é ler a entidade, trocar o campo e reenviar **todos** os campos. A camada de dados encapsula isso; as telas nunca montam esse corpo.
+
+#### Acesso
+
+Não há autenticação. Os endpoints do painel aceitam `X-Employee-Id` apenas para carimbar auditoria, e **isso não é segurança** — o cabeçalho é forjável, como `X-Enterprise-Id` e `X-Customer-Id` (§7). Quando o JWT existir, todo endpoint do painel fica atrás de papel de administrador. Até lá o painel só monta com `VITE_ADMIN_ENABLED=true` e exibe aviso na tela.
+
 ### Painel de simulação (`SimulationPanel.vue`)
 
 Não há endpoint. O tempo virtual e os controles de fila/estoque existem **só no modo mock** (`VITE_API_MODE=mock`). No modo `http` o painel mostra apenas o log de requisições (task 15).
@@ -266,7 +341,7 @@ O front usa só `drop-events/get-by-id`. O resto do CRUD é para ferramentas adm
 
 ## 7. Fora de escopo (decisões registradas)
 
-- **Autenticação.** `X-Customer-Id` e `X-Enterprise-Id` são provisórios e **inseguros**: qualquer um forja o cabeçalho. Antes de produção, os dois vêm de um JWT (o `TenantProvider` já lê a claim `EnterpriseId`).
+- **Autenticação.** `X-Customer-Id` e `X-Enterprise-Id` são provisórios e **inseguros**: qualquer um forja o cabeçalho. Antes de produção, os dois vêm de um JWT (o `TenantProvider` já lê a claim `EnterpriseId`). O mesmo vale, com mais gravidade, para o `X-Employee-Id` do painel: enquanto não houver JWT com papel de administrador, **o painel não vai para ambiente aberto** (task 21 §5). As entidades `Employee`, `Role` e `Department` já existem no Store, com handlers — falta o fluxo de login.
 - **Pagamento.** O checkout cria o pedido com pagamento `Pendente`. Integrar gateway (`DropTransaction`) é outra série.
 - **Inscrição prévia e lista de espera** (`drop-registrations`, `waitlist-entries`). Existem no back-end, mas nenhuma tela usa hoje.
 - **Tempo real** (SignalR/SSE). A fila usa polling de 3s. Trocar por push é evolução futura, e o contrato de `status/{id}` continua válido.
