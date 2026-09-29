@@ -1,0 +1,146 @@
+/* ============================================================================
+   DS — UTILITÁRIOS
+   Conjunto DELIBERADAMENTE pequeno. Isto não é Tailwind: se você precisa de
+   uma utilidade que não está aqui, provavelmente precisa de um componente.
+   ============================================================================ */
+
+/* --- Layout de aplicação -------------------------------------------------- */
+
+/* Raiz da aplicação: garante a superfície do sistema mesmo se um CSS global
+   concorrente pintar o <body> (caso do tema legado durante a migração). */
+.ds-app {
+  min-height: 100vh;
+  background-color: var(--ds-surface-canvas);
+  color: var(--ds-text-primary);
+}
+
+/* Conteúdo principal da página: respiro vertical padrão abaixo da topbar. */
+.ds-page {
+  padding-block: var(--ds-space-8);
+}
+
+.ds-shell {
+  display: grid;
+  grid-template-columns: var(--ds-rail) 1fr;
+  min-height: 100vh;
+  max-width: var(--ds-shell-max);
+  margin-inline: auto;
+}
+
+@media (max-width: 768px) {
+  .ds-shell { grid-template-columns: 1fr; }
+  .ds-shell > .ds-rail { display: none; }
+}
+
+.ds-container {
+  width: 100%;
+  max-width: var(--ds-content-max);
+  margin-inline: auto;
+  padding-inline: var(--ds-gutter);
+}
+
+.ds-container--wide { max-width: var(--ds-shell-max); }
+.ds-container--narrow { max-width: 640px; }
+
+/* --- Composição ----------------------------------------------------------- */
+
+/* Cada modificador já é uma coluna: `ds-stack--6` funciona sozinho. */
+.ds-stack,
+.ds-stack--1, .ds-stack--2, .ds-stack--3, .ds-stack--4, .ds-stack--5,
+.ds-stack--6, .ds-stack--8, .ds-stack--10, .ds-stack--12 { display: flex; flex-direction: column; }
+.ds-stack--1 { gap: var(--ds-space-1); }
+.ds-stack--2 { gap: var(--ds-space-2); }
+.ds-stack--3 { gap: var(--ds-space-3); }
+.ds-stack--4 { gap: var(--ds-space-4); }
+.ds-stack--5 { gap: var(--ds-space-5); }
+.ds-stack--6 { gap: var(--ds-space-6); }
+.ds-stack--8 { gap: var(--ds-space-8); }
+.ds-stack--10 { gap: var(--ds-space-10); }
+.ds-stack--12 { gap: var(--ds-space-12); }
+
+.ds-cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); }
+.ds-cluster--2 { gap: var(--ds-space-2); }
+.ds-cluster--between { justify-content: space-between; }
+.ds-cluster--end { justify-content: flex-end; }
+
+.ds-grid { display: grid; gap: var(--ds-space-6); }
+.ds-grid--2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.ds-grid--3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.ds-grid--sidebar { grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr); }
+
+@media (max-width: 1024px) {
+  /* minmax(0, …): conteúdo largo não estoura a coluna (sem scroll horizontal em 360px). */
+  .ds-grid--sidebar { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- Texto ---------------------------------------------------------------- */
+
+.ds-display {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-5xl);
+  font-weight: var(--ds-weight-medium);
+  letter-spacing: var(--ds-tracking-tight);
+  line-height: var(--ds-leading-tight);
+}
+
+.ds-title {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-3xl);
+  font-weight: var(--ds-weight-medium);
+  letter-spacing: var(--ds-tracking-tight);
+}
+
+.ds-label-caps {
+  font-size: var(--ds-text-2xs);
+  font-weight: var(--ds-weight-medium);
+  letter-spacing: var(--ds-tracking-caps);
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
+.ds-text-secondary { color: var(--ds-text-secondary); }
+.ds-text-tertiary { color: var(--ds-text-tertiary); }
+.ds-text-brand { color: var(--ds-text-brand); }
+.ds-text-danger { color: var(--ds-text-danger); }
+.ds-text-success { color: var(--ds-text-success); }
+.ds-text-sm { font-size: var(--ds-text-sm); }
+.ds-text-xs { font-size: var(--ds-text-xs); }
+.ds-numeric { font-variant-numeric: tabular-nums; }
+
+/* --- Acessibilidade ------------------------------------------------------- */
+
+.ds-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Alvo de toque mínimo garantido sem alterar o visual. */
+.ds-tap {
+  position: relative;
+}
+.ds-tap::after {
+  content: '';
+  position: absolute;
+  inset: 50% 50%;
+  width: var(--ds-tap-min);
+  height: var(--ds-tap-min);
+  transform: translate(-50%, -50%);
+}
+
+/* --- Animações de entrada ------------------------------------------------- */
+
+.ds-animate-in {
+  animation: ds-slide-up var(--ds-duration-slower) var(--ds-ease-entrance) both;
+}
+
+@keyframes ds-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

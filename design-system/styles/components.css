@@ -1,0 +1,662 @@
+/* ============================================================================
+   DS — COMPONENTES
+   Toda classe aqui tem spec correspondente em ../components/<nome>.md
+   Nomenclatura: .ds-bloco__elemento--modificador
+   ============================================================================ */
+
+/* ---------------------------------------------------------------- CARD ---
+   P1: o card branco sobre canvas cinza É a hierarquia. Sem borda dura.    */
+
+.ds-card {
+  background: var(--ds-surface-raised);
+  color: var(--ds-text-primary);
+  border-radius: var(--ds-radius-2xl);
+  padding: var(--ds-space-6);
+  box-shadow: var(--ds-shadow-sm);
+  transition: box-shadow var(--ds-duration-base) var(--ds-ease-standard),
+              transform var(--ds-duration-base) var(--ds-ease-standard);
+}
+
+.ds-card--flush { padding: 0; overflow: hidden; }
+.ds-card--tight { padding: var(--ds-space-4); border-radius: var(--ds-radius-xl); }
+.ds-card--outlined { box-shadow: none; border: 1px solid var(--ds-border-subtle); }
+.ds-card--sunken { background: var(--ds-surface-sunken); box-shadow: none; }
+
+/* Card tinta — usado para o item em foco da tela (P4). */
+.ds-card--inverse {
+  background: var(--ds-surface-inverse);
+  color: var(--ds-text-inverse);
+}
+.ds-card--inverse .ds-card__title,
+.ds-card--inverse .ds-stat__value { color: var(--ds-text-inverse); }
+.ds-card--inverse .ds-card__subtitle,
+.ds-card--inverse .ds-stat__label { color: rgba(255, 255, 255, 0.64); }
+
+/* Card de marca — bloco periwinkle com texto branco (só em display grande). */
+.ds-card--brand {
+  background: var(--ds-surface-brand);
+  color: #FFFFFF;
+}
+
+.ds-card--interactive { cursor: pointer; }
+.ds-card--interactive:hover {
+  box-shadow: var(--ds-shadow-md);
+  transform: translateY(-2px);
+}
+.ds-card--interactive:active { transform: translateY(0); }
+
+.ds-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-5);
+}
+
+.ds-card__title {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-lg);
+  font-weight: var(--ds-weight-medium);
+  letter-spacing: var(--ds-tracking-tight);
+  color: var(--ds-text-primary);
+}
+
+.ds-card__subtitle {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.ds-card__actions { display: flex; align-items: center; gap: var(--ds-space-2); }
+
+/* Imagem do card. Dentro de card padrão ganha raio próprio; em --flush sangra
+   até a borda e o card recorta. Proporção fixa: não há salto de layout. */
+.ds-card__media {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-sunken);
+}
+.ds-card--flush > .ds-card__media { border-radius: 0; }
+/* Foto de produto de catálogo: quadrada e inteira (sem corte), sobre superfície
+   branca — funciona com fotos em fundo branco e proporções variadas. */
+.ds-card__media--product {
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: var(--ds-surface-raised);
+  border: 1px solid var(--ds-border-subtle);
+}
+.ds-card--flush > .ds-card__media--product { border: none; }
+
+/* Miniatura (lista de itens, sacola). Combine com --product. */
+.ds-card__media--thumb {
+  flex: none;
+  width: var(--ds-space-16);
+  border-radius: var(--ds-radius-md);
+}
+
+/* Sem imagem: mesmo espaço, ícone centralizado (nunca um <img> quebrado). */
+.ds-card__media--placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--ds-text-tertiary);
+}
+
+/* Card montado como pilha (ds-stack--N): o gap já espaça as partes, e o footer
+   vai para o fim — em grid, os rodapés de cards vizinhos ficam alinhados. */
+.ds-card[class*='ds-stack--'] > .ds-card__header { margin-bottom: 0; }
+.ds-card[class*='ds-stack--'] > .ds-card__footer { margin-top: auto; }
+
+.ds-card__footer {
+  margin-top: var(--ds-space-5);
+  padding-top: var(--ds-space-4);
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+/* -------------------------------------------------------------- BUTTON ---
+   P4: primário é tinta. Azul nunca é botão padrão.                        */
+
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-tap-min);
+  padding: 0 var(--ds-space-6);
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-standard),
+              color var(--ds-duration-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-duration-fast) var(--ds-ease-standard),
+              transform var(--ds-duration-fast) var(--ds-ease-standard);
+}
+
+.ds-btn:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+.ds-btn:active:not(:disabled) { transform: translateY(1px); }
+
+.ds-btn:disabled,
+.ds-btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ds-btn--primary {
+  background: var(--ds-action-primary-bg);
+  color: var(--ds-action-primary-fg);
+}
+.ds-btn--primary:hover:not(:disabled) { background: var(--ds-action-primary-bg-hover); }
+.ds-btn--primary:active:not(:disabled) { background: var(--ds-action-primary-bg-active); }
+
+.ds-btn--secondary {
+  background: var(--ds-action-secondary-bg);
+  color: var(--ds-action-secondary-fg);
+  border-color: var(--ds-border-default);
+}
+.ds-btn--secondary:hover:not(:disabled) { background: var(--ds-action-secondary-bg-hover); }
+
+.ds-btn--ghost { background: transparent; color: var(--ds-text-primary); }
+.ds-btn--ghost:hover:not(:disabled) { background: var(--ds-action-ghost-bg-hover); }
+
+.ds-btn--brand { background: var(--ds-action-brand-bg); color: #FFFFFF; }
+.ds-btn--brand:hover:not(:disabled) { background: var(--ds-action-brand-bg-hover); }
+
+.ds-btn--danger { background: var(--ds-action-danger-bg); color: #FFFFFF; }
+.ds-btn--danger:hover:not(:disabled) { background: var(--ds-action-danger-bg-hover); }
+
+.ds-btn--sm { min-height: 36px; padding: 0 var(--ds-space-4); font-size: var(--ds-text-sm); }
+.ds-btn--lg { min-height: 52px; padding: 0 var(--ds-space-8); font-size: var(--ds-text-lg); border-radius: var(--ds-radius-lg); }
+.ds-btn--block { width: 100%; }
+.ds-btn--pill { border-radius: var(--ds-radius-pill); }
+
+.ds-btn__icon { flex: none; width: 18px; height: 18px; }
+
+/* Botão de ícone circular — assinatura visual da referência. */
+.ds-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ds-radius-circle);
+  background: var(--ds-surface-raised);
+  border: 1px solid var(--ds-border-subtle);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-standard),
+              color var(--ds-duration-fast) var(--ds-ease-standard);
+}
+.ds-icon-btn:hover { background: var(--ds-action-secondary-bg-hover); color: var(--ds-text-primary); }
+.ds-icon-btn:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+.ds-icon-btn--solid {
+  background: var(--ds-action-primary-bg);
+  color: var(--ds-action-primary-fg);
+  border-color: transparent;
+}
+.ds-icon-btn--solid:hover { background: var(--ds-action-primary-bg-hover); color: var(--ds-action-primary-fg); }
+.ds-icon-btn--ghost { background: transparent; border-color: transparent; }
+.ds-icon-btn--lg { width: 56px; height: 56px; }
+
+/* --------------------------------------------------------------- BADGE ---
+   Pill de status. Cor = significado (P2).                                  */
+
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: 4px var(--ds-space-3);
+  border-radius: var(--ds-radius-pill);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-medium);
+  line-height: 1.4;
+  white-space: nowrap;
+  background: var(--ds-status-done-bg);
+  color: var(--ds-status-done-fg);
+}
+
+.ds-badge__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ds-radius-circle);
+  background: currentColor;
+}
+
+.ds-badge--live      { background: var(--ds-status-live-bg);      color: var(--ds-status-live-fg); }
+.ds-badge--waiting   { background: var(--ds-status-waiting-bg);   color: var(--ds-status-waiting-fg); }
+.ds-badge--scheduled { background: var(--ds-status-scheduled-bg); color: var(--ds-status-scheduled-fg); }
+.ds-badge--done      { background: var(--ds-status-done-bg);      color: var(--ds-status-done-fg); }
+.ds-badge--success   { background: var(--ds-status-success-bg);   color: var(--ds-status-success-fg); }
+.ds-badge--inverse   { background: var(--ds-surface-inverse);     color: var(--ds-text-inverse); }
+
+/* Pulso só para "ao vivo" — nunca decorativo. */
+.ds-badge--live .ds-badge__dot { animation: ds-pulse 1.6s var(--ds-ease-standard) infinite; }
+
+@keyframes ds-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+/* --------------------------------------------------------------- INPUT --- */
+
+.ds-field { display: flex; flex-direction: column; gap: var(--ds-space-2); }
+
+.ds-label {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-text-secondary);
+}
+
+.ds-input {
+  width: 100%;
+  min-height: var(--ds-tap-min);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  background: var(--ds-surface-raised);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-md);
+  transition: border-color var(--ds-duration-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-duration-fast) var(--ds-ease-standard);
+}
+
+.ds-input::placeholder { color: var(--ds-text-tertiary); }
+
+.ds-input:hover:not(:disabled) { border-color: var(--ds-border-strong); }
+
+.ds-input:focus {
+  outline: none;
+  border-color: var(--ds-border-focus);
+  box-shadow: var(--ds-ring);
+}
+
+.ds-input:disabled {
+  background: var(--ds-surface-sunken);
+  color: var(--ds-text-tertiary);
+  cursor: not-allowed;
+}
+
+.ds-input[aria-invalid='true'] {
+  border-color: var(--ds-text-danger);
+}
+.ds-input[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 3px rgba(197, 69, 63, 0.25);
+}
+
+.ds-hint { font-size: var(--ds-text-xs); color: var(--ds-text-secondary); }
+
+/* Campo com ação na mesma linha (ex.: cupom + "Aplicar"). */
+.ds-input-group { display: flex; gap: var(--ds-space-2); }
+.ds-input-group > .ds-input { flex: 1; min-width: 0; }
+.ds-input-group > .ds-btn { flex: none; }
+.ds-error {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-danger);
+}
+
+/* ---------------------------------------------------------------- STAT ---
+   Número grande + unidade menor + rótulo cinza. Padrão exato da referência. */
+
+.ds-stat { display: flex; flex-direction: column; gap: 2px; }
+
+.ds-stat__value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-1);
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-3xl);
+  font-weight: var(--ds-weight-medium);
+  letter-spacing: var(--ds-tracking-tight);
+  color: var(--ds-text-primary);
+  line-height: var(--ds-leading-tight);
+}
+
+.ds-stat__unit {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-regular);
+  color: var(--ds-text-secondary);
+}
+
+.ds-stat__label {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.ds-stat--lg .ds-stat__value { font-size: var(--ds-text-5xl); }
+.ds-stat--critical .ds-stat__value { color: var(--ds-text-danger); }
+/* Sobre o card tinta, o coral escuro some: usa o par de contraste da superfície invertida. */
+.ds-card--inverse .ds-stat--critical .ds-stat__value { color: var(--ds-text-danger-on-inverse); }
+
+.ds-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--ds-space-5);
+}
+
+/* ------------------------------------------------------------ PROGRESS ---
+   Barra segmentada arredondada (alocação na referência → estoque aqui).    */
+
+.ds-progress {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  height: 8px;
+}
+
+.ds-progress__seg {
+  height: 100%;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-chart-track);
+  transition: width var(--ds-duration-slow) var(--ds-ease-standard);
+}
+
+.ds-progress__seg--1 { background: var(--ds-chart-1); }
+.ds-progress__seg--2 { background: var(--ds-chart-2); }
+.ds-progress__seg--3 { background: var(--ds-chart-3); }
+.ds-progress__seg--4 { background: var(--ds-chart-4); }
+
+/* Barra simples com trilho. */
+.ds-meter {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-chart-track);
+  overflow: hidden;
+}
+.ds-meter__fill {
+  height: 100%;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-chart-1);
+  transition: width var(--ds-duration-slow) var(--ds-ease-standard);
+}
+.ds-meter--critical .ds-meter__fill { background: var(--ds-chart-2); }
+
+/* -------------------------------------------------------------- AVATAR ---
+   P5: identidade antes de campo.                                           */
+
+.ds-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ds-radius-circle);
+  background: var(--ds-surface-sunken);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-medium);
+  overflow: hidden;
+  border: 2px solid var(--ds-surface-raised);
+}
+
+.ds-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.ds-avatar--sm { width: 28px; height: 28px; font-size: var(--ds-text-2xs); }
+.ds-avatar--lg { width: 56px; height: 56px; font-size: var(--ds-text-md); }
+
+.ds-avatar--ring-live    { box-shadow: 0 0 0 2px var(--ds-status-live-dot); }
+.ds-avatar--ring-waiting { box-shadow: 0 0 0 2px var(--ds-status-waiting-dot); }
+
+.ds-avatar__badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-surface-inverse);
+  color: var(--ds-text-inverse);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.ds-avatar-group { display: flex; align-items: center; }
+.ds-avatar-group > .ds-avatar + .ds-avatar { margin-left: -10px; }
+.ds-avatar-group .ds-avatar { transition: transform var(--ds-duration-fast) var(--ds-ease-standard); }
+.ds-avatar-group .ds-avatar:hover { transform: translateY(-2px); z-index: 1; }
+
+/* --------------------------------------------------------------- TABLE ---
+   Sem zebra. Separação por hairline. Cabeçalho em label pequeno cinza.     */
+
+.ds-table { width: 100%; border-collapse: collapse; font-size: var(--ds-text-md); }
+
+.ds-table th {
+  padding: var(--ds-space-3) var(--ds-space-4);
+  text-align: left;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-text-secondary);
+  border-bottom: 1px solid var(--ds-border-subtle);
+  white-space: nowrap;
+}
+
+.ds-table td {
+  padding: var(--ds-space-4);
+  border-bottom: 1px solid var(--ds-border-subtle);
+  color: var(--ds-text-primary);
+  vertical-align: middle;
+}
+
+.ds-table tbody tr { transition: background-color var(--ds-duration-fast) var(--ds-ease-standard); }
+.ds-table tbody tr:hover { background: var(--ds-surface-sunken); }
+.ds-table tbody tr:last-child td { border-bottom: none; }
+.ds-table__td--numeric,
+.ds-table__th--numeric { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --------------------------------------------------------------- MODAL --- */
+
+.ds-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--ds-space-4);
+  background: var(--ds-surface-overlay);
+  backdrop-filter: blur(2px);
+  animation: ds-fade-in var(--ds-duration-base) var(--ds-ease-standard);
+}
+
+.ds-modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--ds-surface-raised);
+  border-radius: var(--ds-radius-3xl);
+  padding: var(--ds-space-8);
+  box-shadow: var(--ds-shadow-xl);
+  animation: ds-scale-in var(--ds-duration-slow) var(--ds-ease-entrance);
+}
+
+.ds-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-4);
+  margin-bottom: var(--ds-space-6);
+}
+
+.ds-modal__title {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-2xl);
+  font-weight: var(--ds-weight-medium);
+  letter-spacing: var(--ds-tracking-tight);
+}
+
+.ds-modal__footer {
+  display: flex;
+  gap: var(--ds-space-3);
+  margin-top: var(--ds-space-8);
+}
+
+/* Modal montado como pilha (ds-stack--N): o gap espaça as partes. */
+.ds-modal[class*='ds-stack--'] > .ds-modal__header { margin-bottom: 0; }
+.ds-modal[class*='ds-stack--'] > .ds-modal__footer { margin-top: var(--ds-space-2); }
+
+@keyframes ds-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ds-scale-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ----------------------------------------------------------- NAVEGAÇÃO ---
+   Item ativo = pill tinta. Nunca sublinhado, nunca borda inferior.         */
+
+.ds-nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-1); }
+
+.ds-nav__item {
+  padding: var(--ds-space-2) var(--ds-space-4);
+  border-radius: var(--ds-radius-pill);
+  font-size: var(--ds-text-md);
+  color: var(--ds-text-secondary);
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-standard),
+              color var(--ds-duration-fast) var(--ds-ease-standard);
+}
+.ds-nav__item:hover { background: var(--ds-action-ghost-bg-hover); color: var(--ds-text-primary); text-decoration: none; }
+.ds-nav__item[aria-current='page'],
+.ds-nav__item--active {
+  background: var(--ds-surface-inverse);
+  color: var(--ds-text-inverse);
+}
+
+/* Skip link: primeiro elemento focável da página. Fica fora da tela e só
+   aparece quando recebe foco pelo teclado. */
+.ds-skip-link {
+  position: fixed;
+  top: var(--ds-space-3);
+  left: var(--ds-space-3);
+  z-index: var(--ds-z-toast);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ds-tap-min);
+  padding: 0 var(--ds-space-5);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-action-primary-bg);
+  color: var(--ds-action-primary-fg);
+  font-weight: var(--ds-weight-medium);
+  transform: translateY(calc(-100% - var(--ds-space-6)));
+}
+.ds-skip-link:hover { text-decoration: none; }
+.ds-skip-link:focus-visible {
+  transform: none;
+  outline: none;
+  box-shadow: var(--ds-ring);
+}
+
+.ds-topbar {
+  display: flex;
+  flex-wrap: wrap; /* em telas estreitas, as ações descem para uma segunda linha */
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2) var(--ds-space-4);
+  min-height: var(--ds-topbar);
+  padding: var(--ds-space-2) var(--ds-gutter);
+}
+
+/* Marca: texto em display, peso 500, sem gradiente. Pode ser <a> ou <button>. */
+.ds-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-tap-min);
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-3xl);
+  font-weight: var(--ds-weight-medium);
+  letter-spacing: var(--ds-tracking-tight);
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+}
+.ds-topbar__brand:hover { text-decoration: none; }
+
+.ds-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-space-3);
+  width: var(--ds-rail);
+  padding: var(--ds-space-4) 0;
+}
+
+/* --------------------------------------------------------------- DONUT ---
+   Anel fino, furo grande, pontas arredondadas. Use com <svg>.              */
+
+.ds-donut { transform: rotate(-90deg); }
+.ds-donut__track { fill: none; stroke: var(--ds-chart-track); }
+.ds-donut__arc {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--ds-duration-slower) var(--ds-ease-standard);
+}
+.ds-donut__arc--1 { stroke: var(--ds-chart-1); }
+.ds-donut__arc--2 { stroke: var(--ds-chart-2); }
+
+.ds-donut-wrap { position: relative; display: inline-grid; place-items: center; }
+.ds-donut-wrap__center {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------- ESTADOS --- */
+
+.ds-skeleton {
+  border-radius: var(--ds-radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--ds-surface-sunken) 25%,
+    var(--ds-border-subtle) 37%,
+    var(--ds-surface-sunken) 63%
+  );
+  background-size: 400% 100%;
+  animation: ds-shimmer 1.4s ease infinite;
+}
+
+/* Formas prontas: o skeleton tem a altura do conteúdo final sem estilo inline. */
+.ds-skeleton--title { height: var(--ds-space-6); width: 70%; }
+.ds-skeleton--text { height: var(--ds-space-4); width: 100%; }
+.ds-skeleton--short { width: 40%; }
+
+@keyframes ds-shimmer {
+  from { background-position: 100% 50%; }
+  to { background-position: 0 50%; }
+}
+
+.ds-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--ds-radius-circle);
+  animation: ds-spin 0.7s linear infinite;
+}
+
+@keyframes ds-spin { to { transform: rotate(360deg); } }
+
+.ds-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-12) var(--ds-space-6);
+  text-align: center;
+  color: var(--ds-text-secondary);
+}
+
+.ds-divider { height: 1px; background: var(--ds-border-subtle); border: none; }
