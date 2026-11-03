@@ -27,9 +27,19 @@
   margin-inline: auto;
 }
 
+/* Navegação que substitui o rail no celular (app-shell.md, regra 4). */
+.ds-shell__mobile-nav { display: none; }
+
 @media (max-width: 768px) {
   .ds-shell { grid-template-columns: 1fr; }
   .ds-shell > .ds-rail { display: none; }
+  .ds-shell__mobile-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    min-width: 0; /* sem isto, os itens sem quebra alargam a página */
+    overflow-x: auto;
+  }
 }
 
 .ds-container {
@@ -143,4 +153,65 @@
 @keyframes ds-slide-up {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Layouts do painel e da conta ------------------------------------------- */
+
+/* Faixa de KPIs: 4 colunas → 2 em tablet → 1 no celular. */
+.ds-grid--kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ds-space-4); }
+.ds-grid--kpi-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ds-space-4); }
+
+/* Lista + painel de detalhe (tabela à esquerda, ficha à direita). */
+.ds-grid--split { grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); align-items: start; }
+
+/* Formulário em várias colunas. */
+.ds-grid--form { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--ds-space-4); }
+
+/* Contagens por status e passos (colunas iguais que quebram). */
+.ds-grid--tiles { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--ds-space-3); }
+
+/* Imagem fixa + conteúdo. */
+.ds-grid--media { grid-template-columns: 200px minmax(0, 1fr); align-items: center; }
+
+/* Duas colunas que só quebram abaixo de 1024px (lista + detalhe). */
+.ds-grid--pair { grid-template-columns: minmax(280px, 1fr) minmax(0, 1.6fr); align-items: start; }
+
+@media (max-width: 1024px) {
+  .ds-grid--kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ds-grid--split,
+  .ds-grid--pair { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .ds-grid--media { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .ds-grid--kpi,
+  .ds-grid--kpi-3 { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- Ajustes pontuais ------------------------------------------------------- */
+
+.ds-align-end { align-items: flex-end; }
+.ds-align-start { align-items: flex-start; }
+.ds-self-start { align-self: flex-start; }
+.ds-grow { flex: 1; }
+.ds-min-0 { min-width: 0; }
+.ds-text-right { text-align: right; }
+.ds-text-center { text-align: center; }
+.ds-nowrap { white-space: nowrap; }
+
+.ds-mono { font-family: var(--ds-font-mono); }
+.ds-text-warning { color: var(--ds-text-warning); }
+.ds-text-medium { font-weight: var(--ds-weight-medium); }
+.ds-text-lg { font-size: var(--ds-text-lg); }
+.ds-title--lg { font-size: var(--ds-text-4xl); }
+.ds-title--md { font-family: var(--ds-font-display); font-size: var(--ds-text-2xl); font-weight: var(--ds-weight-medium); }
+.ds-prose { max-width: 65ch; }
+.ds-uppercase { text-transform: uppercase; }
+.ds-list-reset { list-style: none; }
+
+@media (max-width: 640px) {
+  .ds-title--lg { font-size: var(--ds-text-3xl); }
 }

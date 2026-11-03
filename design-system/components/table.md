@@ -68,3 +68,17 @@ Sempre dentro de `.ds-card--flush` — o card dá o raio e a sombra, a tabela pr
 - `<th scope="col">` obrigatório; `scope="row"` quando a primeira coluna identifica a linha.
 - `<caption>` (pode ser `.ds-sr-only`) descrevendo a tabela.
 - Linha clicável: coloque o link na célula principal, não `onClick` na `<tr>`.
+
+## Extensões do painel
+
+| Classe | Uso |
+|---|---|
+| `.ds-table-scroll` | container de rolagem horizontal: tabela larga nunca alarga a página |
+| `.ds-table-header` / `.ds-table-footer` | faixa acima (busca, ações em lote) e abaixo (seleção + `.ds-pagination`) dentro de `.ds-card--flush` |
+| `.ds-table__open` | botão que ocupa a célula principal e abre a ficha da linha |
+| `tr[aria-selected="true"]` | linha aberta no painel de detalhe (`--ds-surface-brand-subtle`) |
+| `.ds-table__td--muted` | valor que não conta (pedido cancelado): riscado e cinza |
+| `.ds-table__sort` dentro de `th[aria-sort]` | cabeçalho ordenável; o botão leva o foco, a direção vai em `aria-sort` |
+| `.ds-checkbox` | checkbox de seleção de linha, sempre com `aria-label` ("Selecionar Ana R.") |
+
+`th.ds-table__th--numeric` alinha à direita mesmo com a regra base `.ds-table th { text-align: left }`.

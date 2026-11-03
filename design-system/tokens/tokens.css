@@ -216,6 +216,11 @@
   color-scheme: light dark;
 }
 
+/* Controles nativos (checkbox, radio, select) seguem o tema escolhido no app,
+   não o do sistema: sem isto, um SO escuro pinta checkbox preto no tema claro. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
 /* ============================================================================
    TEMA ESCURO
    Só os semânticos mudam — primitivos são imutáveis.

@@ -365,6 +365,13 @@
 .ds-progress__seg--3 { background: var(--ds-chart-3); }
 .ds-progress__seg--4 { background: var(--ds-chart-4); }
 
+/* Segmento com a cor do status (pago / pendente / falhou), igual ao ponto do badge. */
+.ds-progress__seg--success   { background: var(--ds-status-success-dot); }
+.ds-progress__seg--scheduled { background: var(--ds-status-scheduled-dot); }
+.ds-progress__seg--live      { background: var(--ds-status-live-dot); }
+.ds-progress__seg--waiting   { background: var(--ds-status-waiting-dot); }
+.ds-progress__seg--done      { background: var(--ds-status-done-dot); }
+
 /* Barra simples com trilho. */
 .ds-meter {
   width: 100%;
@@ -455,7 +462,8 @@
 .ds-table tbody tr:hover { background: var(--ds-surface-sunken); }
 .ds-table tbody tr:last-child td { border-bottom: none; }
 .ds-table__td--numeric,
-.ds-table__th--numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.ds-table__th--numeric,
+.ds-table th.ds-table__th--numeric { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* --------------------------------------------------------------- MODAL --- */
 
@@ -660,3 +668,523 @@
 }
 
 .ds-divider { height: 1px; background: var(--ds-border-subtle); border: none; }
+
+/* ======================================================================
+   PAINEL, CONTA E CHECKOUT
+   Componentes das telas de conta do cliente e do painel da loja.
+   Specs em ../components/: steps · tile · toolbar · pagination ·
+   chart-bars · list · check · dl · code · funnel · banner.
+   ====================================================================== */
+
+/* --------------------------------------------------------------- STEPS ---
+   Etapas lineares (fases do drop, andamento do pedido, etapas do checkout).
+   Cada item: barra + rótulo. Concluída = tinta, atual = marca.             */
+
+.ds-steps {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(var(--ds-space-20), 1fr);
+  gap: var(--ds-space-1);
+  overflow-x: auto;
+  list-style: none;
+}
+
+.ds-steps__item { display: flex; flex-direction: column; gap: var(--ds-space-1); min-width: 0; }
+
+.ds-steps__bar {
+  height: 6px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-chart-track);
+}
+
+.ds-steps__label { font-size: var(--ds-text-xs); color: var(--ds-text-secondary); }
+.ds-steps__meta { font-size: var(--ds-text-xs); color: var(--ds-text-secondary); }
+
+.ds-steps__item--done .ds-steps__bar { background: var(--ds-surface-inverse); }
+.ds-steps__item--current .ds-steps__bar { background: var(--ds-surface-brand); }
+.ds-steps__item--current .ds-steps__label,
+.ds-steps__item--done .ds-steps__label {
+  color: var(--ds-text-primary);
+  font-weight: var(--ds-weight-medium);
+}
+
+/* ---------------------------------------------------------------- TILE ---
+   Bloco rebaixado com rótulo + valor (passo de "como funciona", contagem
+   por status). Não é card: não tem sombra e não é clicável.                */
+
+.ds-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-4);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-sunken);
+  min-width: 0;
+}
+
+.ds-tile__value {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-2xl);
+  font-weight: var(--ds-weight-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--ds-leading-tight);
+}
+
+.ds-tile--inverse { background: var(--ds-surface-inverse); color: var(--ds-text-inverse); }
+.ds-tile--inverse .ds-label-caps,
+.ds-tile--inverse .ds-text-secondary { color: inherit; opacity: 0.8; }
+
+/* Valor que não entra na soma (cancelado, reembolsado): contorno tracejado. */
+.ds-tile--excluded { background: transparent; border: 1px dashed var(--ds-border-strong); }
+.ds-tile--excluded .ds-tile__value { color: var(--ds-text-secondary); }
+
+/* ------------------------------------------------------------- TOOLBAR ---
+   Filtros acima de uma tabela: busca, filtros, ação. Em telas estreitas
+   vira coluna e as pílulas rolam na horizontal.                           */
+
+.ds-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2) var(--ds-space-3);
+}
+
+.ds-toolbar__search { flex: 1 1 var(--ds-sidebar); min-width: 0; max-width: 360px; }
+.ds-toolbar__filter { width: auto; min-width: 160px; }
+.ds-toolbar__actions { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); margin-left: auto; }
+
+@media (max-width: 768px) {
+  .ds-toolbar { flex-direction: column; align-items: stretch; }
+  /* Em coluna, flex-basis viraria altura: a busca volta ao tamanho do campo. */
+  .ds-toolbar__search { flex: none; max-width: none; }
+  .ds-toolbar__filter { width: 100%; }
+  .ds-toolbar__actions { margin-left: 0; }
+  .ds-toolbar > .ds-nav { flex-wrap: nowrap; overflow-x: auto; }
+}
+
+/* ---------------------------------------------------------- PAGINATION ---
+   Intervalo + total em texto e dois botões. Nada de régua de números.     */
+
+.ds-pagination {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.ds-pagination__status { font-variant-numeric: tabular-nums; }
+.ds-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* -------------------------------------------- TABELA: extensões do painel */
+
+/* Container de rolagem: tabela larga não estoura a página. */
+.ds-table-scroll { overflow-x: auto; }
+
+/* Barra acima e rodapé da tabela, dentro do card --flush. */
+.ds-table-header,
+.ds-table-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-4) var(--ds-space-6);
+}
+.ds-table-footer { border-top: 1px solid var(--ds-border-subtle); }
+
+/* Linha aberta no painel de detalhe. */
+.ds-table tbody tr[aria-selected='true'] { background: var(--ds-surface-brand-subtle); }
+
+/* Célula principal clicável: o botão abre a ficha da linha. */
+.ds-table__open {
+  display: block;
+  width: 100%;
+  min-height: var(--ds-tap-min);
+  text-align: left;
+  color: inherit;
+  border-radius: var(--ds-radius-sm);
+  cursor: pointer;
+}
+.ds-table__open:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+
+/* Cabeçalho ordenável: botão dentro do <th>, para o teclado alcançar. */
+.ds-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  min-height: var(--ds-tap-min);
+  color: inherit;
+  font: inherit;
+  border-radius: var(--ds-radius-sm);
+  cursor: pointer;
+}
+.ds-table__sort:hover { color: var(--ds-text-primary); }
+.ds-table__sort:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+.ds-table__th--numeric .ds-table__sort { flex-direction: row-reverse; }
+
+/* Valor que não conta (pedido cancelado). */
+.ds-table__td--muted { color: var(--ds-text-secondary); text-decoration: line-through; }
+
+/* Cabeçalho e nota de card --flush (o card não tem padding). */
+.ds-card--flush > .ds-card__header {
+  margin-bottom: 0;
+  padding: var(--ds-space-5) var(--ds-space-6) var(--ds-space-2);
+}
+.ds-card__note { padding: var(--ds-space-3) var(--ds-space-6) var(--ds-space-5); }
+
+/* ---------------------------------------------------------- CHART-BARS ---
+   Barras no tempo em SVG inline. Uma série, ou duas empilhadas (drop sobre
+   vitrine). Eixo começa no zero. Gridline hairline, sem gradiente.         */
+
+.ds-chart { position: relative; display: flex; flex-direction: column; gap: var(--ds-space-3); margin: 0; }
+
+.ds-chart__plot {
+  display: grid;
+  grid-template-columns: var(--ds-space-12) minmax(0, 1fr);
+  gap: var(--ds-space-2);
+}
+
+.ds-chart__axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-bottom: var(--ds-space-6);
+  font-size: var(--ds-text-2xs);
+  color: var(--ds-text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-chart-bars { display: block; width: 100%; height: 208px; overflow: visible; }
+.ds-chart-bars--sparkline { height: 48px; }
+
+.ds-chart__gridline { stroke: var(--ds-border-subtle); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ds-chart__baseline { stroke: var(--ds-border-default); stroke-width: 1; vector-effect: non-scaling-stroke; }
+
+.ds-chart-bars__bar {
+  fill: var(--ds-chart-1);
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: ds-bar-grow var(--ds-duration-slower) var(--ds-ease-entrance) both;
+}
+.ds-chart-bars__bar--2 { fill: var(--ds-chart-2); }
+
+/* Coluna transparente que recebe hover/foco e abre o tooltip. */
+.ds-chart-bars__hit { fill: transparent; cursor: pointer; }
+.ds-chart-bars__hit:hover,
+.ds-chart-bars__hit--active { fill: var(--ds-surface-brand-subtle); }
+.ds-chart-bars__hit:focus-visible { outline: none; stroke: var(--ds-border-focus); stroke-width: 2; vector-effect: non-scaling-stroke; }
+
+@keyframes ds-bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+.ds-chart__labels {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  min-height: var(--ds-space-6);
+  padding-top: var(--ds-space-1);
+  font-size: var(--ds-text-2xs);
+  color: var(--ds-text-secondary);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.ds-chart__key { display: inline-flex; align-items: center; gap: var(--ds-space-1); }
+
+.ds-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--ds-radius-xs);
+  background: var(--ds-chart-1);
+}
+.ds-swatch--2 { background: var(--ds-chart-2); }
+
+.ds-chart__tooltip {
+  position: absolute;
+  top: var(--ds-space-10);
+  right: 0;
+  min-width: 168px;
+  box-shadow: var(--ds-shadow-lg);
+  pointer-events: none;
+}
+
+.ds-chart__caption { font-size: var(--ds-text-xs); color: var(--ds-text-secondary); }
+
+/* ---------------------------------------------------------------- LIST ---
+   Lista de linhas com ícone, conteúdo e meta (notificações).              */
+
+.ds-list { list-style: none; }
+
+.ds-list__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--ds-space-4);
+  align-items: center;
+  padding: var(--ds-space-4) var(--ds-space-6);
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+.ds-list__item:last-child { border-bottom: none; }
+
+.ds-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+@media (max-width: 480px) {
+  .ds-list__item { grid-template-columns: auto minmax(0, 1fr); padding-inline: var(--ds-space-4); }
+  .ds-list__meta { grid-column: 2; }
+}
+
+/* Ícone em círculo de status (decorativo: não é botão). */
+.ds-icon-tile {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ds-radius-circle);
+  background: var(--ds-status-done-bg);
+  color: var(--ds-text-secondary);
+}
+.ds-icon-tile--lg { width: 48px; height: 48px; }
+.ds-icon-tile--square { border-radius: var(--ds-radius-md); }
+.ds-icon-tile--live { background: var(--ds-status-live-bg); color: var(--ds-status-live-fg); }
+.ds-icon-tile--waiting { background: var(--ds-status-waiting-bg); color: var(--ds-status-waiting-fg); }
+.ds-icon-tile--scheduled { background: var(--ds-status-scheduled-bg); color: var(--ds-status-scheduled-fg); }
+.ds-icon-tile--success { background: var(--ds-status-success-bg); color: var(--ds-status-success-fg); }
+
+/* Marca de "não lida". */
+.ds-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ds-radius-circle);
+  background: var(--ds-surface-brand);
+}
+
+/* Feed de eventos com hora fixa à esquerda. */
+.ds-feed { list-style: none; display: flex; flex-direction: column; gap: var(--ds-space-3); }
+.ds-feed__item {
+  display: grid;
+  grid-template-columns: var(--ds-space-16) minmax(0, 1fr);
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+}
+.ds-feed__time { font-size: var(--ds-text-xs); color: var(--ds-text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Linha de detalhe rebaixada (entradas ligadas a um sinal). */
+.ds-row-sunken {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-sunken);
+  font-size: var(--ds-text-sm);
+}
+
+/* Linha de lista com divisória (estados, notas fiscais). */
+.ds-row-divided {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2) var(--ds-space-4);
+  padding-block: var(--ds-space-2);
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+.ds-row-divided:last-child { border-bottom: none; }
+
+/* --------------------------------------------------------------- CHECK ---
+   Checkbox/radio nativos com rótulo, alvo ≥ 44px. --pill para opções
+   avulsas; --card para opção com preço (frete); --top para texto longo.   */
+
+.ds-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-tap-min);
+  cursor: pointer;
+}
+.ds-check--top { align-items: flex-start; min-height: 0; }
+
+.ds-check > input,
+.ds-checkbox {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--ds-action-primary-bg);
+  cursor: pointer;
+}
+.ds-check--top > input { margin-top: 2px; }
+.ds-check > input:focus-visible,
+.ds-checkbox:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+.ds-check:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
+
+.ds-check--pill {
+  padding-inline: var(--ds-space-4);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-surface-sunken);
+}
+
+.ds-check--card {
+  justify-content: space-between;
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-xl);
+}
+.ds-check--card:has(input:checked) { box-shadow: var(--ds-ring); }
+
+/* ------------------------------------------------------------------ DL ---
+   Lista de valores: rótulo à esquerda, valor à direita (totais, ficha).   */
+
+.ds-dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: var(--ds-space-2);
+  column-gap: var(--ds-space-4);
+}
+.ds-dl > dt { color: var(--ds-text-secondary); }
+.ds-dl > dd { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Ficha: rótulo de largura fixa e valor alinhado à esquerda. */
+.ds-dl--labels { grid-template-columns: minmax(0, 7rem) minmax(0, 1fr); }
+.ds-dl--labels > dd { text-align: left; overflow-wrap: anywhere; }
+
+.ds-dl > dt.ds-dl__total { color: var(--ds-text-primary); font-weight: var(--ds-weight-medium); padding-top: var(--ds-space-2); }
+.ds-dl > dd.ds-dl__total {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-2xl);
+  font-weight: var(--ds-weight-medium);
+}
+
+/* ---------------------------------------------------------------- CODE ---
+   Bloco de JSON/valor técnico (auditoria). Quebra em vez de estourar.     */
+
+.ds-code {
+  margin: 0;
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-sunken);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ds-code--changed { background: var(--ds-status-live-bg); }
+
+/* -------------------------------------------------------------- FUNNEL ---
+   Linha de funil: rótulo, barra e número.                                 */
+
+.ds-funnel { display: flex; flex-direction: column; gap: var(--ds-space-3); }
+.ds-funnel__row {
+  display: grid;
+  grid-template-columns: minmax(0, 8.75rem) minmax(0, 1fr) var(--ds-space-16);
+  gap: var(--ds-space-3);
+  align-items: center;
+  font-size: var(--ds-text-sm);
+}
+.ds-funnel__row > :last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.ds-funnel .ds-meter { height: 12px; }
+
+/* -------------------------------------------------------------- BANNER ---
+   Faixa de aviso do ambiente (dados simulados, área sem login).           */
+
+.ds-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) var(--ds-gutter);
+  background: var(--ds-status-scheduled-bg);
+  color: var(--ds-status-scheduled-fg);
+  font-size: var(--ds-text-xs);
+}
+
+/* ---------------------------------------------- AJUSTES DE COMPONENTES --- */
+
+/* Botão claro dentro de card tinta (CTA do card em foco). */
+.ds-btn--on-inverse { background: var(--ds-surface-raised); color: var(--ds-text-primary); }
+.ds-btn--on-inverse:hover:not(:disabled) { background: var(--ds-surface-sunken); }
+
+/* Ação destrutiva discreta (texto vermelho, sem fundo). */
+.ds-btn--ghost-danger { background: transparent; color: var(--ds-text-danger); }
+.ds-btn--ghost-danger:hover:not(:disabled) { background: var(--ds-status-live-bg); }
+
+/* Textos auxiliares herdam a cor do card tinta / marca. */
+.ds-card--inverse .ds-label-caps,
+.ds-card--inverse .ds-hint,
+.ds-card--brand .ds-label-caps,
+.ds-card--brand .ds-stat__label,
+.ds-card--brand .ds-stat__value,
+.ds-card--brand .ds-stat__unit { color: inherit; }
+.ds-card--inverse .ds-label-caps,
+.ds-card--inverse .ds-hint { opacity: 0.8; }
+
+/* Link de voltar com ícone. */
+.ds-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  align-self: flex-start;
+  min-height: var(--ds-tap-min);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-brand);
+}
+
+/* Imagem esmaecida (produto esgotado). */
+.ds-card__media--muted { filter: grayscale(0.6); }
+.ds-card__media--sm { width: var(--ds-space-12); }
+
+/* <a> com cara de botão ou de card: sem a cor e o sublinhado de link. */
+a.ds-btn:hover,
+a.ds-icon-btn:hover,
+a.ds-card:hover,
+a.ds-nav__item:hover { text-decoration: none; }
+a.ds-card { color: inherit; }
+a.ds-btn--ghost,
+a.ds-btn:not([class*='ds-btn--']) { color: var(--ds-text-primary); }
+a.ds-card:focus-visible,
+button.ds-card:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+
+/* Card que é botão (item de lista que abre o detalhe). */
+button.ds-card { width: 100%; text-align: left; }
+
+/* Item aberto no painel de detalhe. */
+.ds-card--selected { box-shadow: var(--ds-ring); }
+
+/* Card em linha: ícone · conteúdo · meta (aviso em destaque). */
+.ds-card--row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--ds-space-4);
+  align-items: center;
+}
+@media (max-width: 480px) {
+  .ds-card--row { grid-template-columns: auto minmax(0, 1fr); }
+  .ds-card--row > :last-child { grid-column: 2; }
+}
+
+/* Rail com links (o painel navega por hash): item atual em tinta. */
+.ds-rail .ds-icon-btn[aria-current='page'] {
+  background: var(--ds-action-primary-bg);
+  color: var(--ds-action-primary-fg);
+  border-color: transparent;
+}
