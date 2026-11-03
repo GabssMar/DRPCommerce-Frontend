@@ -69,6 +69,23 @@ ol[role='list'] {
   list-style: none;
 }
 
+/* Grupo de campos sem a moldura do navegador; a legenda segue .ds-label. */
+fieldset {
+  border: none;
+  min-width: 0;
+}
+
+/* <details>: o resumo é o alvo clicável. */
+summary {
+  cursor: pointer;
+  list-style: none;
+}
+summary::-webkit-details-marker { display: none; }
+summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-ring);
+}
+
 /* --- Tipografia ------------------------------------------------------------
    Hierarquia por TAMANHO e COR, não por peso. Nada acima de 600.           */
 

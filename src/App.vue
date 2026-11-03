@@ -1,7 +1,10 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted, onWatcherCleanup } from 'vue';
-import { ShieldCheck, Layers, ArrowLeft, ShoppingBag } from '@lucide/vue';
+import { ShieldCheck, Layers, ArrowLeft, ShoppingBag, Bell, UserRound, ListPlus, ClipboardCheck } from '@lucide/vue';
 import { api, getVirtualTime, subscribeToSimState } from './services/api';
+import { ADMIN_ENABLED } from './services/config';
+import { focusMain, href, isAdminRoute, navigate, route } from './router';
+import { useBag } from './composables/useBag';
 import Countdown from './components/Countdown.vue';
 import QueueStatus from './components/QueueStatus.vue';
 import StockProgress from './components/StockProgress.vue';
@@ -12,9 +15,30 @@ import EventPortal from './components/EventPortal.vue';
 import StoreShowcase from './components/StoreShowcase.vue';
 import StoreProductDetail from './components/StoreProductDetail.vue';
 import StoreCart from './components/StoreCart.vue';
+import StoreCheckout from './components/StoreCheckout.vue';
+import DropRegistration from './components/drop/DropRegistration.vue';
+import DropWaitlist from './components/drop/DropWaitlist.vue';
+import AccountProfile from './components/account/AccountProfile.vue';
+import AccountOrders from './components/account/AccountOrders.vue';
+import AccountNotifications from './components/account/AccountNotifications.vue';
+import AdminApp from './components/admin/AdminApp.vue';
 
-const currentPage = ref('portal');
+// Telas da loja que ainda rodam sobre o simulador de src/services/api.js
+// (portal, detalhe do drop, vitrine, sacola) e as telas novas, que usam a
+// camada src/services/ no formato do back-end.
+const PAGE_BY_ROUTE = { portal: 'portal', drop: 'detail', vitrine: 'vitrine', product: 'product', cart: 'cart' };
+const currentPage = computed(() => PAGE_BY_ROUTE[route.value.name] ?? route.value.name);
+const showAdmin = computed(() => ADMIN_ENABLED && isAdminRoute(route.value));
+
 const selectedEventId = ref(1);
+const selectedProductId = ref(null);
+watch(route, (r) => {
+  if (r.name === 'drop') selectedEventId.value = Number(r.params.id) || 1;
+  if (r.name === 'product') selectedProductId.value = Number(r.params.id);
+  // Em produção sem a flag, #/admin cai no portal, sem mensagem.
+  if (isAdminRoute(r) && !ADMIN_ENABLED) navigate('/');
+}, { immediate: true });
+
 const eventsList = ref([]);
 const eventData = ref(null);
 const productData = ref(null);
@@ -33,32 +57,9 @@ const portalError = ref('');
 const storeProducts = ref([]);
 const isStoreLoading = ref(true);
 const storeError = ref('');
-// Sacola: [{ productId, quantity }], guardada no navegador por conveniência (sobrevive ao F5).
-const BAG_KEY = 'veloce_store_bag';
-const readBag = () => {
-  try {
-    const saved = JSON.parse(localStorage.getItem(BAG_KEY));
-    return Array.isArray(saved) ? saved : [];
-  } catch {
-    return [];
-  }
-};
-const bag = ref(readBag());
-watch(bag, (items) => {
-  try {
-    localStorage.setItem(BAG_KEY, JSON.stringify(items));
-  } catch {
-    /* storage bloqueado: a sacola vale só nesta sessão */
-  }
-}, { deep: true });
-
-const selectedProductId = ref(null);
-const storeOrder = ref(null);
-const isPlacingOrder = ref(false);
-const storeOrderError = ref('');
+const { bag, bagCount, addToBag, updateBagQuantity, removeFromBag } = useBag();
 
 const bagItemIds = computed(() => bag.value.map((i) => i.productId));
-const bagCount = computed(() => bag.value.reduce((sum, i) => sum + i.quantity, 0));
 const productById = (id) => storeProducts.value.find((p) => p.id === id);
 const selectedProduct = computed(() => productById(selectedProductId.value) ?? null);
 const bagLines = computed(() => bag.value
@@ -139,44 +140,6 @@ const loadStoreData = async () => {
   }
 };
 
-// A vitrine envia só o id (1 unidade); o detalhe envia { productId, quantity }.
-const addToBag = (payload) => {
-  const { productId, quantity } = typeof payload === 'number' ? { productId: payload, quantity: 1 } : payload;
-  const existing = bag.value.find((i) => i.productId === productId);
-  if (existing) existing.quantity += quantity;
-  else bag.value = [...bag.value, { productId, quantity }];
-  storeOrder.value = null;
-};
-
-const updateBagQuantity = ({ productId, quantity }) => {
-  const item = bag.value.find((i) => i.productId === productId);
-  if (item) item.quantity = quantity;
-};
-
-const removeFromBag = (productId) => {
-  bag.value = bag.value.filter((i) => i.productId !== productId);
-};
-
-const placeStoreOrder = async () => {
-  isPlacingOrder.value = true;
-  storeOrderError.value = '';
-  try {
-    const response = await api.createStoreOrder(bag.value.map(({ productId, quantity }) => ({ productId, quantity })));
-    if (response.isSuccess) {
-      storeOrder.value = response.content;
-      bag.value = [];
-      loadStoreData(); // estoque mudou
-    } else {
-      storeOrderError.value = response.listMessageErrors?.[0] || 'Não foi possível finalizar o pedido.';
-    }
-  } catch (err) {
-    console.error('Store order failed', err);
-    storeOrderError.value = 'Não conseguimos finalizar o pedido. Verifique sua conexão e tente de novo.';
-  } finally {
-    isPlacingOrder.value = false;
-  }
-};
-
 // Sincroniza a tela com o estado do simulador; reassina ao trocar de evento.
 watch(selectedEventId, (eventId) => {
   loadPortalData();
@@ -249,9 +212,7 @@ watch([selectedEventId, currentPage], ([eventId, page]) => {
     loadEventDetailData(eventId);
   } else if (page === 'vitrine' || ((page === 'product' || page === 'cart') && !storeProducts.value.length)) {
     loadStoreData();
-  } else if (page === 'product' || page === 'cart') {
-    // catálogo já carregado
-  } else {
+  } else if (page === 'portal') {
     loadPortalData();
   }
 }, { immediate: true });
@@ -314,8 +275,7 @@ watch([selectedEventId, currentPage], ([eventId, page]) => {
 }, { immediate: true });
 
 const handleSelectEvent = (eventId) => {
-  selectedEventId.value = eventId;
-  currentPage.value = 'detail';
+  navigate(`/drops/${eventId}`);
 };
 
 const handleJoinQueue = async (alreadyUpdatedEntry = null) => {
@@ -364,26 +324,16 @@ const handleCheckoutSubmit = async (payload) => {
 
 const formatBRL = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
-const goToPortal = () => {
-  currentPage.value = 'portal';
-};
+const goToPortal = () => navigate('/');
+const goToVitrine = () => navigate('/vitrine');
+const goToProduct = (productId) => navigate(`/vitrine/${productId}`);
+const goToCart = () => navigate('/sacola');
 
-const goToVitrine = () => {
-  currentPage.value = 'vitrine';
-  storeOrder.value = null;
-};
-
-const goToProduct = (productId) => {
-  selectedProductId.value = productId;
-  currentPage.value = 'product';
-};
-
-const goToCart = () => {
-  currentPage.value = 'cart';
-};
-
-const STORE_PAGES = ['vitrine', 'product', 'cart'];
+const STORE_PAGES = ['vitrine', 'product', 'cart', 'checkout'];
+const ACCOUNT_PAGES = ['account', 'account-orders', 'account-order', 'account-notifications'];
 const isStorePage = computed(() => STORE_PAGES.includes(currentPage.value));
+const isOrdersPage = computed(() => ['account-orders', 'account-order'].includes(currentPage.value));
+const isDropsPage = computed(() => !isStorePage.value && !ACCOUNT_PAGES.includes(currentPage.value));
 
 // Voltar: detalhe do drop → portal; detalhe do produto e sacola → vitrine.
 const backTarget = computed(() => {
@@ -407,6 +357,8 @@ const environmentLabel = computed(() => {
   return `Simulação · ${virtualTime.value.toLocaleTimeString('pt-BR')}`;
 });
 
+const isDropSoldOut = computed(() => Boolean(productData.value) && productData.value.unitsSold >= productData.value.unitsAllocated);
+
 // Badge ao lado do h1, conforme o mapa de estados de design-system/components/badge.md.
 const dropBadge = computed(() => {
   const ev = eventData.value;
@@ -416,8 +368,7 @@ const dropBadge = computed(() => {
   const now = virtualTime.value;
   if (now >= new Date(ev.dropEndsAt)) return { variant: 'ds-badge--done', label: 'Encerrado' };
 
-  const product = productData.value;
-  if (product && product.unitsSold >= product.unitsAllocated) return { variant: 'ds-badge--done', label: 'Esgotado' };
+  if (isDropSoldOut.value) return { variant: 'ds-badge--done', label: 'Esgotado' };
 
   const queueOpens = new Date(ev.queueOpensAt);
   if (now < queueOpens) {
@@ -429,10 +380,16 @@ const dropBadge = computed(() => {
 </script>
 
 <template>
-  <div class="ds-app">
+  <AdminApp v-if="showAdmin" />
+
+  <div
+    v-else
+    class="ds-app"
+  >
     <a
       href="#main"
       class="ds-skip-link"
+      @click.prevent="focusMain"
     >Pular para o conteúdo</a>
 
     <header class="ds-topbar ds-container">
@@ -466,29 +423,39 @@ const dropBadge = computed(() => {
 
       <nav
         class="ds-nav"
-        aria-label="Tipo de compra"
+        aria-label="Principal"
       >
-        <button
-          type="button"
+        <a
           class="ds-nav__item"
-          :aria-current="!isStorePage ? 'page' : undefined"
-          @click="goToPortal"
-        >
-          Drops
-        </button>
-        <button
-          type="button"
+          :href="href('/')"
+          :aria-current="isDropsPage ? 'page' : undefined"
+        >Drops</a>
+        <a
           class="ds-nav__item"
+          :href="href('/vitrine')"
           :aria-current="isStorePage ? 'page' : undefined"
-          @click="goToVitrine"
-        >
-          Vitrine
-        </button>
+        >Vitrine</a>
+        <a
+          class="ds-nav__item"
+          :href="href('/conta/pedidos')"
+          :aria-current="isOrdersPage ? 'page' : undefined"
+        >Meus pedidos</a>
       </nav>
 
       <div class="ds-cluster ds-cluster--2">
+        <a
+          class="ds-icon-btn"
+          :href="href('/conta/notificacoes')"
+          aria-label="Notificações"
+          :aria-current="currentPage === 'account-notifications' ? 'page' : undefined"
+        >
+          <Bell
+            :size="20"
+            :stroke-width="1.5"
+            aria-hidden="true"
+          />
+        </a>
         <button
-          v-if="isStorePage"
           type="button"
           class="ds-btn ds-btn--secondary ds-btn--sm ds-btn--pill"
           :aria-label="`Abrir sacola: ${bagCount} ${bagCount === 1 ? 'item' : 'itens'}`"
@@ -503,6 +470,18 @@ const dropBadge = computed(() => {
           />
           {{ bagCount }}
         </button>
+        <a
+          class="ds-icon-btn"
+          :href="href('/conta')"
+          aria-label="Minha conta"
+          :aria-current="currentPage === 'account' ? 'page' : undefined"
+        >
+          <UserRound
+            :size="20"
+            :stroke-width="1.5"
+            aria-hidden="true"
+          />
+        </a>
         <span class="ds-badge ds-badge--inverse">{{ environmentLabel }}</span>
       </div>
     </header>
@@ -545,15 +524,34 @@ const dropBadge = computed(() => {
       <StoreCart
         v-else-if="currentPage === 'cart'"
         :lines="bagLines"
-        :is-submitting="isPlacingOrder"
-        :error="storeOrderError"
-        :order="storeOrder"
         @update-quantity="updateBagQuantity"
         @remove="removeFromBag"
-        @checkout="placeStoreOrder"
+        @checkout="navigate('/checkout')"
         @select-product="goToProduct"
         @continue-shopping="goToVitrine"
       />
+
+      <StoreCheckout v-else-if="currentPage === 'checkout'" />
+
+      <DropRegistration
+        v-else-if="currentPage === 'drop-registration'"
+        :event-id="Number(route.params.id)"
+      />
+
+      <DropWaitlist
+        v-else-if="currentPage === 'drop-waitlist'"
+        :event-id="Number(route.params.id)"
+      />
+
+      <AccountProfile v-else-if="currentPage === 'account'" />
+
+      <AccountOrders
+        v-else-if="isOrdersPage"
+        :selected-source="route.params.source ?? null"
+        :selected-id="route.params.id ? Number(route.params.id) : null"
+      />
+
+      <AccountNotifications v-else-if="currentPage === 'account-notifications'" />
 
       <template v-else>
         <div class="ds-cluster ds-cluster--between">
@@ -663,6 +661,37 @@ const dropBadge = computed(() => {
                 :units-allocated="productData?.unitsAllocated"
                 :units-sold="productData?.unitsSold"
               />
+
+              <nav
+                class="ds-card ds-card--sunken ds-stack--3"
+                aria-label="Inscrição e lista de espera"
+              >
+                <span class="ds-label-caps">Antes e depois da fila</span>
+                <a
+                  class="ds-btn ds-btn--secondary ds-btn--block"
+                  :href="href(`/drops/${selectedEventId}/inscricao`)"
+                >
+                  <ClipboardCheck
+                    class="ds-btn__icon"
+                    :size="16"
+                    :stroke-width="1.5"
+                    aria-hidden="true"
+                  />
+                  Inscrição prévia
+                </a>
+                <a
+                  class="ds-btn ds-btn--secondary ds-btn--block"
+                  :href="href(`/drops/${selectedEventId}/lista-de-espera`)"
+                >
+                  <ListPlus
+                    class="ds-btn__icon"
+                    :size="16"
+                    :stroke-width="1.5"
+                    aria-hidden="true"
+                  />
+                  {{ isDropSoldOut ? 'Entrar na lista de espera' : 'Lista de espera' }}
+                </a>
+              </nav>
             </template>
           </div>
         </section>
@@ -681,6 +710,7 @@ const dropBadge = computed(() => {
     />
 
     <SimulationPanel
+      v-if="['portal', 'detail', 'vitrine', 'product', 'cart'].includes(currentPage)"
       :active-event-id="selectedEventId"
       :current-page="currentPage"
     />

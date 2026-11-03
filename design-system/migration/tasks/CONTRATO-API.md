@@ -306,6 +306,11 @@ Os **ids de status são idênticos nos dois lados** (mesmo seed): pedido `1 Pend
 
 Não há autenticação. Os endpoints do painel aceitam `X-Employee-Id` apenas para carimbar auditoria, e **isso não é segurança** — o cabeçalho é forjável, como `X-Enterprise-Id` e `X-Customer-Id` (§7). Quando o JWT existir, todo endpoint do painel fica atrás de papel de administrador. Até lá o painel só monta com `VITE_ADMIN_ENABLED=true` e exibe aviso na tela.
 
+### Telas do design (C3–C13 e E1–E13)
+
+Mapeamento completo tela → rota → situação no back-end em [`TELAS-DESIGN.md`](./TELAS-DESIGN.md),
+conferido no `origin/main` do back-end em 2026-10-28 (auth com JWT + CSRF e rotas `storefront/*`).
+
 ### Painel de simulação (`SimulationPanel.vue`)
 
 Não há endpoint. O tempo virtual e os controles de fila/estoque existem **só no modo mock** (`VITE_API_MODE=mock`). No modo `http` o painel mostra apenas o log de requisições (task 15).

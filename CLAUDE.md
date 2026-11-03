@@ -42,13 +42,25 @@ Commits seguem Conventional Commits (validado por commitlint + husky).
 
 ```
 src/
-├── main.js               entrada: importa o Design System, initTheme(), monta o App
-├── App.vue               roteamento por estado (portal ↔ detalhe do drop)
+├── main.js               entrada: Design System, initTheme(), restaura sessão (modo http), monta o App
+├── router.js             rotas por hash (#/conta, #/admin/pedidos…), sem Vue Router
+├── App.vue               shell da loja; #/admin/* monta components/admin/AdminApp.vue
 ├── index.css             tema LEGADO (neon/glass) — em migração
-├── components/           (.vue) Countdown · QueueStatus · StockProgress ·
-│                         ProductDetails · CheckoutModal · EventPortal · SimulationPanel
-└── services/api.js       cliente HTTP + simulação de tempo virtual
+├── components/
+│   ├── *.vue             portal, detalhe do drop, fila, vitrine, sacola, StoreCheckout (C10)
+│   ├── drop/             DropRegistration (C3) · DropWaitlist (C6)
+│   ├── account/          AccountProfile (C11) · AccountOrders (C12) · AccountNotifications (C13)
+│   ├── admin/            painel da loja (E1–E13), AdminApp é o shell com rail
+│   └── ui/               StatusBadge · LoadState · PaginationNav · ModalDialog · StepsBar
+├── composables/          useAsync/useAction (estados de carga) · useNow · useBag
+└── services/
+    ├── api.js            simulador antigo (portal, detalhe, vitrine) — sai nas tasks 15–18
+    ├── http.js · auth.js · resources.js · client-api.js · admin-api.js · status.js · sales.js
+    └── mock/             seed + servidor falso nas MESMAS rotas do back (VITE_API_MODE=mock)
 design-system/            o Design System (docs + CSS + tokens)
 ```
+
+Telas do design e rotas do back-end: `design-system/migration/tasks/TELAS-DESIGN.md`.
+Nenhum componente chama `fetch`: tudo passa por `src/services/`.
 
 O back-end fica em `../backend` (repositório separado).
