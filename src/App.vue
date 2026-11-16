@@ -3,6 +3,7 @@ import { computed, ref, watch, onMounted, onUnmounted, onWatcherCleanup, defineA
 import { ShieldCheck, Layers, ArrowLeft, ShoppingBag, Bell, UserRound, ListPlus, ClipboardCheck } from '@lucide/vue';
 import { api, getVirtualTime, subscribeToSimState } from './services/api';
 import { ADMIN_ENABLED } from './services/config';
+import { isSignedIn, REALMS } from './services/session';
 import { focusMain, href, isAdminRoute, navigate, route } from './router';
 import { useBag } from './composables/useBag';
 import Countdown from './components/Countdown.vue';
@@ -18,6 +19,7 @@ import StoreCheckout from './components/StoreCheckout.vue';
 import DropRegistration from './components/drop/DropRegistration.vue';
 import DropWaitlist from './components/drop/DropWaitlist.vue';
 import AccountProfile from './components/account/AccountProfile.vue';
+import CustomerAuth from './components/account/CustomerAuth.vue';
 import AccountOrders from './components/account/AccountOrders.vue';
 import AccountNotifications from './components/account/AccountNotifications.vue';
 import AdminApp from './components/admin/AdminApp.vue';
@@ -32,6 +34,9 @@ const SimulationPanel = SHOW_SIMULATION ? defineAsyncComponent(() => import('./c
 const PAGE_BY_ROUTE = { portal: 'portal', drop: 'detail', vitrine: 'vitrine', product: 'product', cart: 'cart' };
 const currentPage = computed(() => PAGE_BY_ROUTE[route.value.name] ?? route.value.name);
 const showAdmin = computed(() => ADMIN_ENABLED && isAdminRoute(route.value));
+// Login obrigatório na loja: sem sessão de cliente, qualquer rota mostra o login.
+// Depois de entrar, a própria rota pedida aparece (o hash não muda).
+const customerSignedIn = computed(() => isSignedIn(REALMS.storefront));
 
 const selectedEventId = ref(1);
 const selectedProductId = ref(null);
@@ -384,6 +389,30 @@ const dropBadge = computed(() => {
 
 <template>
   <AdminApp v-if="showAdmin" />
+
+  <div
+    v-else-if="!customerSignedIn"
+    class="ds-app"
+  >
+    <header class="ds-topbar ds-container">
+      <span class="ds-topbar__brand">
+        <Layers
+          :size="24"
+          :stroke-width="1.5"
+          aria-hidden="true"
+        />
+        VELOCE // LABS
+      </span>
+      <span class="ds-badge ds-badge--inverse">{{ environmentLabel }}</span>
+    </header>
+    <main
+      id="main"
+      tabindex="-1"
+      class="ds-container ds-page"
+    >
+      <CustomerAuth />
+    </main>
+  </div>
 
   <div
     v-else

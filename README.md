@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-Abra **http://localhost:5173**. O painel do administrador fica em **http://localhost:5173/#/admin**.
+Abra **http://localhost:5173**. A loja abre na tela de **login**: só o cliente logado navega pelos drops, pela vitrine e pela conta. No modo de exemplo, entre com `camila.duarte@exemplo.com` e qualquer senha. O painel do administrador fica em **http://localhost:5173/#/admin**, com login próprio.
 
 Não precisa do back-end para ver o projeto funcionando: por padrão o front usa **dados de exemplo** (veja abaixo).
 

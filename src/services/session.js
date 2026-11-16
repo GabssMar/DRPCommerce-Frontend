@@ -10,24 +10,47 @@ export const REALMS = {
   backoffice: 'backoffice',
 };
 
-const MOCK_SESSIONS = {
-  storefront: { accessToken: 'mock-storefront-customer-1', expiresAt: null },
-  backoffice: { accessToken: 'mock-backoffice-employee-1', expiresAt: null },
+// Modo mock: a equipe já começa logada; o cliente começa deslogado (a loja
+// abre no login, como no back real). O token do cliente de exemplo fica na
+// sessionStorage para o F5 não deslogar, papel do cookie de refresh no modo http.
+const MOCK_BACKOFFICE = { accessToken: 'mock-backoffice-employee-1', expiresAt: null };
+const MOCK_STOREFRONT_KEY = 'mock-storefront-session';
+
+const readMockStorefront = () => {
+  try {
+    return JSON.parse(sessionStorage.getItem(MOCK_STOREFRONT_KEY));
+  } catch {
+    return null;
+  }
+};
+
+const persistMockStorefront = (value) => {
+  try {
+    if (value) sessionStorage.setItem(MOCK_STOREFRONT_KEY, JSON.stringify(value));
+    else sessionStorage.removeItem(MOCK_STOREFRONT_KEY);
+  } catch {
+    /* sem storage: a sessão de exemplo vale só até o F5 */
+  }
 };
 
 export const session = reactive({
-  storefront: IS_MOCK ? { ...MOCK_SESSIONS.storefront } : null,
-  backoffice: IS_MOCK ? { ...MOCK_SESSIONS.backoffice } : null,
+  storefront: IS_MOCK ? readMockStorefront() : null,
+  backoffice: IS_MOCK ? { ...MOCK_BACKOFFICE } : null,
 });
+
+// Aviso para a tela de login depois de uma saída forçada (ex.: senha alterada).
+export const authNotice = reactive({ storefront: '' });
 
 export const getAccessToken = (realm) => session[realm]?.accessToken ?? null;
 
 export const setSession = (realm, { accessToken, accessTokenExpiresAt }) => {
   session[realm] = { accessToken, expiresAt: accessTokenExpiresAt ?? null };
+  if (IS_MOCK && realm === REALMS.storefront) persistMockStorefront(session[realm]);
 };
 
 export const clearSession = (realm) => {
   session[realm] = null;
+  if (IS_MOCK && realm === REALMS.storefront) persistMockStorefront(null);
 };
 
 export const isSignedIn = (realm) => Boolean(session[realm]?.accessToken);
