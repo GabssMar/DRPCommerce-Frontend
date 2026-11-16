@@ -1,6 +1,8 @@
 <script setup>
 import { reactive, ref } from 'vue';
-import { AlertCircle } from '@lucide/vue';
+import { AlertCircle, ArrowLeft } from '@lucide/vue';
+import { href } from '../../router';
+import { IS_MOCK } from '../../services/config';
 import { useAction } from '../../composables/useAsync';
 import { loginEmployee, selectEnterprise } from '../../services/auth';
 
@@ -28,12 +30,29 @@ const choose = useAction(async (membershipId) => {
 
 <template>
   <section class="ds-container--narrow ds-stack--6">
+    <a
+      class="ds-back-link ds-self-start"
+      :href="href('/')"
+    >
+      <ArrowLeft
+        :size="16"
+        :stroke-width="1.5"
+        aria-hidden="true"
+      />
+      Início
+    </a>
     <div class="ds-stack--1">
       <h1 class="ds-title ds-title--lg">
         Entrar no painel
       </h1>
       <p class="ds-text-secondary">
-        Acesso da equipe da loja.
+        Acesso da equipe da loja. O login de cliente é separado.
+      </p>
+      <p
+        v-if="IS_MOCK"
+        class="ds-hint"
+      >
+        Modo de exemplo: qualquer e-mail e senha entram como o lojista de exemplo.
       </p>
     </div>
 

@@ -21,7 +21,9 @@ npm install
 npm run dev
 ```
 
-Abra **http://localhost:5173**. A loja abre na tela de **login**: só o cliente logado navega pelos drops, pela vitrine e pela conta. No modo de exemplo, entre com `camila.duarte@exemplo.com` e qualquer senha. O painel do administrador fica em **http://localhost:5173/#/admin**, com login próprio.
+Abra **http://localhost:5173**. A primeira tela é a **página de apresentação** do DRP Commerce, com as opções de criar conta, entrar como cliente ou entrar como lojista. Só o cliente logado navega pelos drops, pela vitrine e pela conta; o lojista entra no painel em **http://localhost:5173/#/admin**, com login separado. Quem já está logado não vê a apresentação: o cliente vai direto para os drops e o lojista para o dashboard.
+
+No modo de exemplo, os dois começam deslogados: o cliente entra com `camila.duarte@exemplo.com` e qualquer senha, e o lojista com qualquer e-mail e senha.
 
 Não precisa do back-end para ver o projeto funcionando: por padrão o front usa **dados de exemplo** (veja abaixo).
 

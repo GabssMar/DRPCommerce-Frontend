@@ -10,32 +10,32 @@ export const REALMS = {
   backoffice: 'backoffice',
 };
 
-// Modo mock: a equipe já começa logada; o cliente começa deslogado (a loja
-// abre no login, como no back real). O token do cliente de exemplo fica na
-// sessionStorage para o F5 não deslogar, papel do cookie de refresh no modo http.
-const MOCK_BACKOFFICE = { accessToken: 'mock-backoffice-employee-1', expiresAt: null };
-const MOCK_STOREFRONT_KEY = 'mock-storefront-session';
+// Modo mock: cliente e equipe começam deslogados, como no back real (a loja
+// abre na página de visitas, o painel no login do lojista). Os tokens de
+// exemplo ficam na sessionStorage para o F5 não deslogar, papel do cookie de
+// refresh no modo http.
+const mockKey = (realm) => `mock-${realm}-session`;
 
-const readMockStorefront = () => {
+const readMockSession = (realm) => {
   try {
-    return JSON.parse(sessionStorage.getItem(MOCK_STOREFRONT_KEY));
+    return JSON.parse(sessionStorage.getItem(mockKey(realm)));
   } catch {
     return null;
   }
 };
 
-const persistMockStorefront = (value) => {
+const persistMockSession = (realm, value) => {
   try {
-    if (value) sessionStorage.setItem(MOCK_STOREFRONT_KEY, JSON.stringify(value));
-    else sessionStorage.removeItem(MOCK_STOREFRONT_KEY);
+    if (value) sessionStorage.setItem(mockKey(realm), JSON.stringify(value));
+    else sessionStorage.removeItem(mockKey(realm));
   } catch {
     /* sem storage: a sessão de exemplo vale só até o F5 */
   }
 };
 
 export const session = reactive({
-  storefront: IS_MOCK ? readMockStorefront() : null,
-  backoffice: IS_MOCK ? { ...MOCK_BACKOFFICE } : null,
+  storefront: IS_MOCK ? readMockSession(REALMS.storefront) : null,
+  backoffice: IS_MOCK ? readMockSession(REALMS.backoffice) : null,
 });
 
 // Aviso para a tela de login depois de uma saída forçada (ex.: senha alterada).
@@ -45,12 +45,12 @@ export const getAccessToken = (realm) => session[realm]?.accessToken ?? null;
 
 export const setSession = (realm, { accessToken, accessTokenExpiresAt }) => {
   session[realm] = { accessToken, expiresAt: accessTokenExpiresAt ?? null };
-  if (IS_MOCK && realm === REALMS.storefront) persistMockStorefront(session[realm]);
+  if (IS_MOCK) persistMockSession(realm, session[realm]);
 };
 
 export const clearSession = (realm) => {
   session[realm] = null;
-  if (IS_MOCK && realm === REALMS.storefront) persistMockStorefront(null);
+  if (IS_MOCK) persistMockSession(realm, null);
 };
 
 export const isSignedIn = (realm) => Boolean(session[realm]?.accessToken);

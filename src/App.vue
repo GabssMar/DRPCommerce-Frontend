@@ -20,6 +20,7 @@ import DropRegistration from './components/drop/DropRegistration.vue';
 import DropWaitlist from './components/drop/DropWaitlist.vue';
 import AccountProfile from './components/account/AccountProfile.vue';
 import CustomerAuth from './components/account/CustomerAuth.vue';
+import LandingPage from './components/LandingPage.vue';
 import AccountOrders from './components/account/AccountOrders.vue';
 import AccountNotifications from './components/account/AccountNotifications.vue';
 import AdminApp from './components/admin/AdminApp.vue';
@@ -34,9 +35,21 @@ const SimulationPanel = SHOW_SIMULATION ? defineAsyncComponent(() => import('./c
 const PAGE_BY_ROUTE = { portal: 'portal', drop: 'detail', vitrine: 'vitrine', product: 'product', cart: 'cart' };
 const currentPage = computed(() => PAGE_BY_ROUTE[route.value.name] ?? route.value.name);
 const showAdmin = computed(() => ADMIN_ENABLED && isAdminRoute(route.value));
-// Login obrigatório na loja: sem sessão de cliente, qualquer rota mostra o login.
-// Depois de entrar, a própria rota pedida aparece (o hash não muda).
+// Página inicial (#/) conforme a sessão:
+//   cliente logado -> portal de drops (a sessão de cliente tem prioridade)
+//   lojista logado -> dashboard do painel (#/admin)
+//   ninguém logado -> página de visitas (LandingPage)
+// Sem sessão de cliente, #/entrar e #/criar-conta mostram o formulário e
+// qualquer outra rota da loja mostra o login; depois de entrar, a rota pedida
+// aparece. Com sessão de cliente, #/entrar e #/criar-conta voltam ao portal.
+const GUEST_ROUTES = ['login', 'register'];
 const customerSignedIn = computed(() => isSignedIn(REALMS.storefront));
+const employeeSignedIn = computed(() => ADMIN_ENABLED && isSignedIn(REALMS.backoffice));
+const showGuest = computed(() => !customerSignedIn.value || GUEST_ROUTES.includes(route.value.name));
+watch([customerSignedIn, employeeSignedIn, route], ([customer, employee, r]) => {
+  if (customer && GUEST_ROUTES.includes(r.name)) navigate('/');
+  else if (!customer && employee && r.name === 'portal' && r.path === '/') navigate('/admin');
+}, { immediate: true });
 
 const selectedEventId = ref(1);
 const selectedProductId = ref(null);
@@ -391,26 +404,54 @@ const dropBadge = computed(() => {
   <AdminApp v-if="showAdmin" />
 
   <div
-    v-else-if="!customerSignedIn"
+    v-else-if="showGuest"
     class="ds-app"
   >
+    <a
+      href="#main"
+      class="ds-skip-link"
+      @click.prevent="focusMain"
+    >Pular para o conteúdo</a>
     <header class="ds-topbar ds-container">
-      <span class="ds-topbar__brand">
+      <a
+        class="ds-topbar__brand"
+        :href="href('/')"
+      >
         <Layers
           :size="24"
           :stroke-width="1.5"
           aria-hidden="true"
         />
-        VELOCE // LABS
-      </span>
-      <span class="ds-badge ds-badge--inverse">{{ environmentLabel }}</span>
+        DRP Commerce
+      </a>
+      <div class="ds-cluster ds-cluster--2">
+        <a
+          v-if="ADMIN_ENABLED"
+          class="ds-btn ds-btn--ghost ds-btn--sm"
+          :href="href('/admin')"
+        >Sou lojista</a>
+        <a
+          class="ds-btn ds-btn--secondary ds-btn--sm"
+          :href="href('/entrar')"
+          :aria-current="route.name === 'login' ? 'page' : undefined"
+        >Entrar</a>
+        <a
+          class="ds-btn ds-btn--primary ds-btn--sm"
+          :href="href('/criar-conta')"
+          :aria-current="route.name === 'register' ? 'page' : undefined"
+        >Criar conta</a>
+      </div>
     </header>
     <main
       id="main"
       tabindex="-1"
       class="ds-container ds-page"
     >
-      <CustomerAuth />
+      <LandingPage v-if="route.name === 'portal'" />
+      <CustomerAuth
+        v-else
+        :initial-mode="route.name === 'register' ? 'register' : 'login'"
+      />
     </main>
   </div>
 

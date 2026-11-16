@@ -1,6 +1,7 @@
 <script setup>
-import { computed, reactive, ref } from 'vue';
-import { AlertCircle, CheckCircle } from '@lucide/vue';
+import { computed, reactive, ref, watch } from 'vue';
+import { AlertCircle, ArrowLeft, CheckCircle } from '@lucide/vue';
+import { href, navigate } from '../../router';
 import { useAction } from '../../composables/useAsync';
 import { IS_MOCK } from '../../services/config';
 import { authNotice } from '../../services/session';
@@ -9,9 +10,13 @@ import { MOCK_CUSTOMER_EMAIL } from '../../services/mock/seed';
 import { STATES } from '../../services/status';
 import { fromCalendarInput } from '../../services/format';
 
-// Tela de entrada da loja: sem sessão de cliente, o App mostra só isto.
-// Entrar ou criar conta com o mesmo formulário. Rotas (back-end atual):
-//   POST storefront/auth/login | register
+// Entrar ou criar conta (cliente) com o mesmo formulário. Aparece em #/entrar,
+// #/criar-conta e no lugar de qualquer rota da loja aberta sem sessão.
+// Rotas (back-end atual): POST storefront/auth/login | register
+const props = defineProps({
+  // 'login' ou 'register': em qual aba o formulário abre.
+  initialMode: { type: String, default: 'login' },
+});
 const GENDERS = ['Feminino', 'Masculino', 'Outro', 'Prefiro não informar'];
 
 const form = reactive({
@@ -25,7 +30,16 @@ const fieldError = (err, field) => {
   return entries.find(([key]) => key.toLowerCase() === field.toLowerCase())?.[1]?.[0] ?? '';
 };
 
-const mode = ref('login');
+const mode = ref(props.initialMode);
+watch(() => props.initialMode, (value) => {
+  mode.value = value;
+});
+
+// Em #/entrar e #/criar-conta, as abas também trocam a rota (link compartilhável).
+const switchMode = (value) => {
+  mode.value = value;
+  if (props.initialMode !== value) navigate(value === 'login' ? '/entrar' : '/criar-conta');
+};
 const credentials = reactive({ email: '', password: '' });
 
 // Aviso de quem saiu sem querer (senha alterada): some no próximo login.
@@ -58,6 +72,17 @@ const activeAuth = computed(() => (mode.value === 'login' ? login : register));
 
 <template>
   <div class="ds-stack--6">
+    <a
+      class="ds-back-link ds-self-start"
+      :href="href('/')"
+    >
+      <ArrowLeft
+        :size="16"
+        :stroke-width="1.5"
+        aria-hidden="true"
+      />
+      Início
+    </a>
     <div class="ds-cluster ds-cluster--between">
       <div class="ds-stack--1">
         <h1 class="ds-title ds-title--lg">
@@ -76,7 +101,7 @@ const activeAuth = computed(() => (mode.value === 'login' ? login : register));
           type="button"
           :class="['ds-nav__item', { 'ds-nav__item--active': mode === 'login' }]"
           :aria-pressed="mode === 'login'"
-          @click="mode = 'login'"
+          @click="switchMode('login')"
         >
           Entrar
         </button>
@@ -84,7 +109,7 @@ const activeAuth = computed(() => (mode.value === 'login' ? login : register));
           type="button"
           :class="['ds-nav__item', { 'ds-nav__item--active': mode === 'register' }]"
           :aria-pressed="mode === 'register'"
-          @click="mode = 'register'"
+          @click="switchMode('register')"
         >
           Criar conta
         </button>
