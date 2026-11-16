@@ -1188,3 +1188,108 @@ button.ds-card { width: 100%; text-align: left; }
   color: var(--ds-action-primary-fg);
   border-color: transparent;
 }
+
+/* ---------------------------------------------------------------- DOCK ---
+   Ferramenta interna flutuante (simulador do drop). Fica no canto inferior
+   direito, acima do conteúdo. Superfície --sunken: não parece produto.    */
+
+.ds-dock {
+  position: fixed;
+  right: var(--ds-space-4);
+  bottom: var(--ds-space-4);
+  z-index: var(--ds-z-toast);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: var(--ds-space-3);
+  max-width: calc(100vw - 2 * var(--ds-space-4));
+}
+
+.ds-dock__trigger { box-shadow: var(--ds-shadow-lg); }
+
+.ds-dock__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(400px, calc(100vw - 2 * var(--ds-space-4)));
+  max-height: min(580px, calc(100vh - 7 * var(--ds-space-4)));
+  overflow: hidden;
+  background: var(--ds-surface-sunken);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-xl);
+  box-shadow: var(--ds-shadow-xl);
+}
+
+.ds-dock__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-4);
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.ds-dock__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--ds-space-4);
+}
+
+.ds-dock__range {
+  width: 100%;
+  min-height: var(--ds-tap-min);
+  accent-color: var(--ds-action-primary-bg);
+  cursor: pointer;
+}
+.ds-dock__range:focus-visible { outline: none; box-shadow: var(--ds-ring); border-radius: var(--ds-radius-xs); }
+
+/* Linha de log expansível: botão de largura total, rótulo · status. */
+.ds-dock__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  width: 100%;
+  min-height: var(--ds-tap-min);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-standard);
+}
+.ds-dock__row:hover { background: var(--ds-action-ghost-bg-hover); }
+.ds-dock__row:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+.ds-dock__row[aria-expanded='true'] { background: var(--ds-surface-raised); }
+
+/* Select compacto dentro da faixa (não ocupa a largura toda). */
+.ds-dock__select { width: auto; flex: 1; min-width: 0; max-width: 60%; }
+
+/* Abas do dock: .ds-nav__item dividindo a faixa em partes iguais. */
+.ds-dock__tabs { justify-content: stretch; gap: var(--ds-space-1); }
+.ds-dock__tabs > .ds-nav__item {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-tap-min);
+  border: none;
+  font: inherit;
+  font-size: var(--ds-text-sm);
+  background: transparent;
+  cursor: pointer;
+}
+.ds-dock__tabs > .ds-nav__item--active { background: var(--ds-surface-inverse); color: var(--ds-text-inverse); }
+.ds-dock__tabs > .ds-nav__item:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+
+/* Grade de ações: 2 colunas; --fill divide a linha entre todos os botões. */
+.ds-dock__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-2); }
+.ds-dock__actions--fill { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.ds-dock__actions > .ds-btn { padding: 0 var(--ds-space-2); white-space: normal; text-align: center; line-height: var(--ds-leading-snug); }
+
+.ds-dock__row-main { display: flex; align-items: center; gap: var(--ds-space-2); min-width: 0; }
+.ds-dock__truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

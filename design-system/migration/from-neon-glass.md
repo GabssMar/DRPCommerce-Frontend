@@ -1,5 +1,7 @@
 # Migração — do tema "neon glass" para o Design System
 
+> **Concluída (16/11/2026, tasks 08 e 09).** `src/index.css` foi apagado e o `SimulationPanel` migrou para o componente `ds-dock`. Este arquivo fica como histórico. A verificação do passo 4 agora roda sozinha em `npm run ds:check`, também no pre-commit.
+
 O `src/index.css` atual implementa um tema **dark neon glassmorphism** (roxo `#7C4DFF`, ciano `#00E5FF`, glow, `backdrop-filter`, gradientes). O Design System substitui esse tema. A boa notícia: a arquitetura já é compatível (custom properties + classes utilitárias), então a migração é **tradução de valores**, não reescrita.
 
 ## Passo 0 — ligar o sistema

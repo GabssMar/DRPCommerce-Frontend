@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted, onWatcherCleanup } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted, onWatcherCleanup, defineAsyncComponent } from 'vue';
 import { ShieldCheck, Layers, ArrowLeft, ShoppingBag, Bell, UserRound, ListPlus, ClipboardCheck } from '@lucide/vue';
 import { api, getVirtualTime, subscribeToSimState } from './services/api';
 import { ADMIN_ENABLED } from './services/config';
@@ -10,7 +10,6 @@ import QueueStatus from './components/QueueStatus.vue';
 import StockProgress from './components/StockProgress.vue';
 import ProductDetails from './components/ProductDetails.vue';
 import CheckoutModal from './components/CheckoutModal.vue';
-import SimulationPanel from './components/SimulationPanel.vue';
 import EventPortal from './components/EventPortal.vue';
 import StoreShowcase from './components/StoreShowcase.vue';
 import StoreProductDetail from './components/StoreProductDetail.vue';
@@ -26,6 +25,10 @@ import AdminApp from './components/admin/AdminApp.vue';
 // Telas da loja que ainda rodam sobre o simulador de src/services/api.js
 // (portal, detalhe do drop, vitrine, sacola) e as telas novas, que usam a
 // camada src/services/ no formato do back-end.
+// Simulador do drop: ferramenta de teste, só no servidor de desenvolvimento.
+// Carregado sob demanda para não entrar no build de produção.
+const SHOW_SIMULATION = import.meta.env.DEV;
+const SimulationPanel = SHOW_SIMULATION ? defineAsyncComponent(() => import('./components/SimulationPanel.vue')) : null;
 const PAGE_BY_ROUTE = { portal: 'portal', drop: 'detail', vitrine: 'vitrine', product: 'product', cart: 'cart' };
 const currentPage = computed(() => PAGE_BY_ROUTE[route.value.name] ?? route.value.name);
 const showAdmin = computed(() => ADMIN_ENABLED && isAdminRoute(route.value));
@@ -710,7 +713,7 @@ const dropBadge = computed(() => {
     />
 
     <SimulationPanel
-      v-if="['portal', 'detail', 'vitrine', 'product', 'cart'].includes(currentPage)"
+      v-if="SHOW_SIMULATION && ['portal', 'detail', 'vitrine', 'product', 'cart'].includes(currentPage)"
       :active-event-id="selectedEventId"
       :current-page="currentPage"
     />
