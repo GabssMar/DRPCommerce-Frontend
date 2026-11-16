@@ -42,12 +42,19 @@ O modo é escolhido no arquivo `.env.local`. Para criar o seu, copie o `.env.exa
 | Configuração | Valor | Efeito |
 |---|---|---|
 | `VITE_API_MODE` | `mock` (padrão) | Usa dados de exemplo e não precisa de servidor |
-| | `http` | Chama o back-end de verdade pelo Gateway (`localhost:5000`) |
+| | `http` | Chama o back-end de verdade pelo Gateway (login obrigatório) |
+| `VITE_GATEWAY_URL` | `https://localhost:5000` (padrão) | Endereço do Gateway usado pelo servidor de desenvolvimento |
 | `VITE_ADMIN_ENABLED` | `true` / `false` | Libera o painel na versão de produção (em desenvolvimento ele sempre aparece) |
 
 No modo de exemplo, o painel mostra as requisições que **seriam** enviadas ao back-end, o que ajuda a conferir a integração sem servidor.
 
-> **Atenção:** o modo `http` ainda não funciona com a versão atual do back-end. O ajuste está descrito na [task 27](./design-system/migration/tasks/27-front-contrato-v2.md).
+### Usando o back-end real (`http`)
+
+- Suba o back-end local: Gateway em `https://localhost:5000`, Store em `5001` e Drop em `5002`.
+- A loja é identificada pelo endereço do site. Por isso, abra o front em **http://teste.stores.localhost:5173**, não em `localhost`. O painel fica em **http://teste.stores.localhost:5173/#/admin**.
+- Os cadastros do painel (produtos, categorias, cupons, drops…) são gravados na loja escolhida no login. Se aparecer "Sessão sem loja selecionada", saia e entre de novo no painel.
+
+> **Atenção:** o painel já funciona com o back-end real. A vitrine e a área **Minha conta** ainda não: o Gateway não repassa o endereço da loja e toda rota `storefront/*` responde 404. A correção é no back-end e está descrita em [`PENDENCIAS-BACKEND-2026-11-16.md`](./design-system/migration/tasks/PENDENCIAS-BACKEND-2026-11-16.md).
 
 ---
 
