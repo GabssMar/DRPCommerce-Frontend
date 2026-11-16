@@ -96,7 +96,8 @@ const editing = ref(null);
 const openProduct = (p = null) => {
   editing.value = p ? { ...p } : {
     id: null, enterpriseId: 1, categoryId: categories.value[0]?.id ?? null, supplierId: null, name: '', slug: '',
-    description: '', sku: '', barCode: '', price: 0, costPrice: 0, weight: 0, height: 0, width: 0, length: 0,
+    // Dimensões vazias (não 0): o formulário obriga o preenchimento, o back recusa 0.
+    description: '', sku: '', barCode: '', price: 0, costPrice: 0, weight: '', height: '', width: '', length: '',
     brand: '', imageUrls: '', isActive: true, isDigital: false,
   };
 };
@@ -591,8 +592,55 @@ const toggleCategory = useAction(async (c) => {
             v-model="editing.weight"
             class="ds-input"
             type="number"
-            min="0"
+            min="0.01"
             step="0.01"
+            required
+          >
+        </div>
+        <!-- Produto físico (vitrine e drop): o back exige dimensões maiores que zero. -->
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="pr-height"
+          >Altura (cm)</label>
+          <input
+            id="pr-height"
+            v-model="editing.height"
+            class="ds-input"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+          >
+        </div>
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="pr-width"
+          >Largura (cm)</label>
+          <input
+            id="pr-width"
+            v-model="editing.width"
+            class="ds-input"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+          >
+        </div>
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="pr-length"
+          >Comprimento (cm)</label>
+          <input
+            id="pr-length"
+            v-model="editing.length"
+            class="ds-input"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
           >
         </div>
       </div>

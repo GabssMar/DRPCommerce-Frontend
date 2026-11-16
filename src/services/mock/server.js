@@ -1,7 +1,8 @@
 import { createSeed, SIGNED_IN_CUSTOMER_ID, SIGNED_IN_EMPLOYEE_ID } from './seed';
 import { toEntity } from '../resources';
 
-// Servidor falso que responde nas MESMAS rotas do Gateway, com os mesmos formatos:
+// Servidor falso que responde nas MESMAS rotas do Gateway (/api/store/api/...,
+// /api/drop/api/...), com os mesmos formatos:
 //   - CRUD (BaseController): envelope Result<T>; add/update devolvem lista.
 //   - storefront/*, auth/*, enterprises/*: objeto cru (como o back faz).
 //   - erros em application/problem+json, com `code`.
@@ -314,7 +315,8 @@ function storeBackoffice(method, path, body, who) {
 export function mockFetch(method, url, body, headers) {
   const path = url.split('?')[0];
   const who = identity(headers);
-  const match = path.match(/^\/api\/(drop|store)\/(.+)$/);
+  // Mesmo caminho duplo do Gateway: /api/<serviço>/api/<rota>.
+  const match = path.match(/^\/api\/(drop|store)\/api\/(.+)$/);
   if (!match) return problem(404, 'Route.NotFound', `Rota inexistente: ${path}`);
   const [, service, rest] = match;
 

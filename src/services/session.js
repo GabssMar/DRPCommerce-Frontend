@@ -3,8 +3,8 @@ import { IS_MOCK } from './config';
 
 // Sessões em memória, uma por área. O access token nunca vai para o localStorage:
 // o refresh fica no cookie HttpOnly que o back-end grava, e um F5 renova a sessão.
-//   storefront: cliente final (POST /api/store/storefront/auth/login)
-//   backoffice: equipe da loja (POST /api/store/auth/login)
+//   storefront: cliente final (POST /api/store/api/storefront/auth/login)
+//   backoffice: equipe da loja (POST /api/store/api/auth/login)
 export const REALMS = {
   storefront: 'storefront',
   backoffice: 'backoffice',

@@ -107,7 +107,8 @@ const eventPayload = () => {
     price: Number(form.price),
     description: form.description.trim(),
     coverImageUrl: form.coverImageUrl.trim(),
-    bannerImageUrl: form.bannerImageUrl.trim(),
+    // O back exige banner; a tela promete "Sem banner: usa a capa", então a capa vai no lugar.
+    bannerImageUrl: form.bannerImageUrl.trim() || form.coverImageUrl.trim(),
     requiresRegistration: form.requiresRegistration,
     isPublic: form.isPublic,
     registrationStartsAt: fromLocalInput(form.registrationStartsAt),
@@ -121,6 +122,7 @@ const eventPayload = () => {
 
 const save = useAction(async () => {
   if (scheduleError.value) throw new Error(scheduleError.value);
+  if (!form.coverImageUrl.trim()) throw new Error('Informe a imagem de capa do drop.');
   const payload = eventPayload();
   const saved = isNew.value ? await admin.dropEvents.add(payload) : await admin.dropEvents.update(payload);
   const toVariant = (v) => ({

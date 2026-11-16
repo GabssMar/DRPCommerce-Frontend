@@ -9,10 +9,11 @@ const env = import.meta.env ?? {};
 export const API_MODE = env.VITE_API_MODE === 'http' ? 'http' : 'mock';
 export const IS_MOCK = API_MODE === 'mock';
 
-// O front chama sempre o Gateway: /api/drop/** vai para o DropCommerce.Api,
-// /api/store/** para o StoreCommerce.Api.
-export const DROP_BASE = env.VITE_DROP_API_BASE_URL || '/api/drop';
-export const STORE_BASE = env.VITE_STORE_API_BASE_URL || '/api/store';
+// O front chama sempre o Gateway. O Gateway remove o prefixo do serviço
+// (/api/drop ou /api/store) e os controllers ficam em /api/..., então o caminho
+// externo tem /api duas vezes: /api/store/api/storefront/store.
+export const DROP_BASE = env.VITE_DROP_API_BASE_URL || '/api/drop/api';
+export const STORE_BASE = env.VITE_STORE_API_BASE_URL || '/api/store/api';
 
 export const REQUEST_TIMEOUT_MS = 15000;
 export const MOCK_LATENCY_MS = 280;

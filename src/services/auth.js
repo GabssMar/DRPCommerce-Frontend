@@ -1,27 +1,33 @@
 import { STORE_BASE } from './config';
 import { onUnauthorized, request } from './http';
-import { clearSession, REALMS, setSession } from './session';
+import { clearSession, getAccessToken, REALMS, setSession } from './session';
 
 // Login, cadastro e renovação. O back-end exige CSRF (cabeçalho X-CSRF-TOKEN)
 // nas rotas de autenticação e grava o refresh em cookie HttpOnly.
-//   cliente: /api/store/storefront/auth/*
-//   equipe:  /api/store/auth/*
+//   cliente: /api/store/api/storefront/auth/*
+//   equipe:  /api/store/api/auth/*
 
 const AUTH_BASE = {
   [REALMS.storefront]: `${STORE_BASE}/storefront/auth`,
   [REALMS.backoffice]: `${STORE_BASE}/auth`,
 };
 
+// O token CSRF vale para o contexto de autenticação em que foi emitido: o pedido
+// vai com o access token atual, e o cache é por token. Depois de login, troca de
+// loja ou renovação, o próximo POST busca um CSRF novo (com o antigo, o back
+// responde 403 "Token CSRF inválido").
 const csrfCache = {};
 
 const csrfHeaders = async (realm) => {
-  if (!csrfCache[realm]) {
-    csrfCache[realm] = request('GET', `${AUTH_BASE[realm]}/csrf`, { realm: null }).catch((err) => {
-      delete csrfCache[realm];
+  const owner = getAccessToken(realm) ?? '';
+  if (!csrfCache[realm] || csrfCache[realm].owner !== owner) {
+    const promise = request('GET', `${AUTH_BASE[realm]}/csrf`, { realm, retry: false }).catch((err) => {
+      if (csrfCache[realm]?.promise === promise) delete csrfCache[realm];
       throw err;
     });
+    csrfCache[realm] = { owner, promise };
   }
-  const { requestToken, headerName } = await csrfCache[realm];
+  const { requestToken, headerName } = await csrfCache[realm].promise;
   return { [headerName || 'X-CSRF-TOKEN']: requestToken };
 };
 

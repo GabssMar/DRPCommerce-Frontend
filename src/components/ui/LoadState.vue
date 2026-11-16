@@ -1,10 +1,11 @@
 <script setup>
+import { computed } from 'vue';
 import { AlertCircle, Inbox } from '@lucide/vue';
 
 // Os três estados de patterns/states.md em volta de um bloco de conteúdo:
 // carregando (esqueleto com a altura final), erro (mensagem + tentar de novo) e
 // vazio. Atualização em segundo plano não volta ao esqueleto.
-defineProps({
+const props = defineProps({
   isLoading: { type: Boolean, default: false },
   error: { type: Object, default: null },
   isEmpty: { type: Boolean, default: false },
@@ -16,6 +17,16 @@ defineProps({
 });
 
 const emit = defineEmits(['retry']);
+
+// A mensagem já vem por `kind` do ApiError. Tentar de novo só aparece quando
+// repetir pode dar outro resultado (não em permissão, inexistente ou validação).
+const NO_RETRY = new Set(['forbidden', 'not-found', 'validation']);
+const canRetry = computed(() => !NO_RETRY.has(props.error?.kind));
+const waitHint = computed(() =>
+  props.error?.kind === 'rate-limit' && props.error.retryAfter
+    ? `Tente de novo em ${props.error.retryAfter} s.`
+    : '',
+);
 </script>
 
 <template>
@@ -47,7 +58,11 @@ const emit = defineEmits(['retry']);
     <p class="ds-text-danger">
       {{ error.message }}
     </p>
+    <p v-if="waitHint">
+      {{ waitHint }}
+    </p>
     <button
+      v-if="canRetry"
       type="button"
       class="ds-btn ds-btn--secondary ds-btn--sm"
       @click="emit('retry')"
