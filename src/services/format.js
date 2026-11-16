@@ -52,6 +52,12 @@ export const toDateInput = (value) => (valid(value) ? toLocalInput(value).slice(
 export const fromDateInput = (value, endOfDay = false) =>
   value ? new Date(`${value}T${endOfDay ? '23:59:59' : '00:00:00'}`).toISOString() : null;
 
+// Data de CALENDÁRIO (nascimento, contratação): não é um instante, não passa pelo
+// fuso. O back grava 1995-04-20T00:00:00Z; convertido para -03:00 viraria 19/04
+// e cada "salvar" voltaria um dia.
+export const toCalendarInput = (value) => (valid(value) ? new Date(value).toISOString().slice(0, 10) : '');
+export const fromCalendarInput = (value) => (value ? `${value}T00:00:00Z` : null);
+
 // 00:41 · 1:12:40
 export const formatDuration = (ms) => {
   const total = Math.max(0, Math.floor(ms / 1000));

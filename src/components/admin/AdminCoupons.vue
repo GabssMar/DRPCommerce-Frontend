@@ -4,6 +4,7 @@ import { AlertCircle, Plus, X } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
 import { admin } from '../../services/admin-api';
 import { COUPON_TYPE, options } from '../../services/status';
+import { currentEnterpriseId } from '../../services/session';
 import { brl, formatDate, formatNumber, formatTime, fromDateInput, percent, toDateInput } from '../../services/format';
 import CatalogTabs from './CatalogTabs.vue';
 import LoadState from '../ui/LoadState.vue';
@@ -85,7 +86,7 @@ const save = useAction(async (changes = {}) => {
     if (f.id) await admin.dropCoupons.update(payload);
     else await admin.dropCoupons.add(payload);
   } else {
-    const payload = { ...common, enterpriseId: f.enterpriseId ?? 1, couponTypeId: f.typeId, maxUses: f.maxUses === '' ? null : Number(f.maxUses) };
+    const payload = { ...common, enterpriseId: f.enterpriseId ?? currentEnterpriseId(), couponTypeId: f.typeId, maxUses: f.maxUses === '' ? null : Number(f.maxUses) };
     if (f.id) await admin.coupons.update(payload);
     else await admin.coupons.add(payload);
   }

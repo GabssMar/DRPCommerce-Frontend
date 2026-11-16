@@ -3,7 +3,8 @@ import { computed, reactive, ref, watch } from 'vue';
 import { AlertCircle, ArrowLeft, ImageOff, Plus, Trash2 } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
 import { href, navigate } from '../../router';
-import { admin, listEventCoupons, listEventVariants, listMyEnterprises, setDropStatus } from '../../services/admin-api';
+import { admin, listEventCoupons, listEventVariants, setDropStatus } from '../../services/admin-api';
+import { currentEnterpriseId } from '../../services/session';
 import { COUPON_TYPE, DROP_EVENT_STATUS, options } from '../../services/status';
 import { brl, formatDate, formatNumber, fromLocalInput, toLocalInput } from '../../services/format';
 import DropTabs from './DropTabs.vue';
@@ -21,13 +22,12 @@ const eventId = computed(() => Number(props.params.id) || null);
 const isNew = computed(() => !eventId.value);
 
 const data = useAsync(async () => {
-  const [products, enterprises] = await Promise.all([admin.products.getAll(), listMyEnterprises().catch(() => [])]);
-  const enterpriseId = enterprises[0]?.enterpriseId ?? 1;
-  if (isNew.value) return { event: null, variants: [], coupons: [], products, enterpriseId };
+  const products = await admin.products.getAll();
+  if (isNew.value) return { event: null, variants: [], coupons: [], products };
   const [event, variants, coupons] = await Promise.all([
     admin.dropEvents.getById(eventId.value), listEventVariants(eventId.value), listEventCoupons(eventId.value),
   ]);
-  return { event, variants, coupons, products, enterpriseId };
+  return { event, variants, coupons, products };
 });
 
 const event = computed(() => data.data.value?.event ?? null);
@@ -96,7 +96,7 @@ const removeVariant = (index) => {
 
 const eventPayload = () => {
   const base = event.value ?? {
-    enterpriseId: data.data.value.enterpriseId, dropEventStatusId: 1, unitsReserved: 0, unitsSold: 0,
+    enterpriseId: currentEnterpriseId(), dropEventStatusId: 1, unitsReserved: 0, unitsSold: 0,
     effectiveAppearanceRevisionId: null,
   };
   return {
@@ -107,7 +107,8 @@ const eventPayload = () => {
     price: Number(form.price),
     description: form.description.trim(),
     coverImageUrl: form.coverImageUrl.trim(),
-    bannerImageUrl: form.bannerImageUrl.trim(),
+    // O back exige banner; a tela promete "Sem banner: usa a capa", então a capa vai no lugar.
+    bannerImageUrl: form.bannerImageUrl.trim() || form.coverImageUrl.trim(),
     requiresRegistration: form.requiresRegistration,
     isPublic: form.isPublic,
     registrationStartsAt: fromLocalInput(form.registrationStartsAt),
@@ -121,6 +122,7 @@ const eventPayload = () => {
 
 const save = useAction(async () => {
   if (scheduleError.value) throw new Error(scheduleError.value);
+  if (!form.coverImageUrl.trim()) throw new Error('Informe a imagem de capa do drop.');
   const payload = eventPayload();
   const saved = isNew.value ? await admin.dropEvents.add(payload) : await admin.dropEvents.update(payload);
   const toVariant = (v) => ({

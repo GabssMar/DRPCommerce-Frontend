@@ -5,6 +5,7 @@ import { useAsync, useAction } from '../../composables/useAsync';
 import { navigate, route } from '../../router';
 import { admin, adjustStock } from '../../services/admin-api';
 import { brl, formatNumber } from '../../services/format';
+import { currentEnterpriseId } from '../../services/session';
 import CatalogTabs from './CatalogTabs.vue';
 import LoadState from '../ui/LoadState.vue';
 import ModalDialog from '../ui/ModalDialog.vue';
@@ -95,8 +96,9 @@ const saveAdjust = useAction(async () => {
 const editing = ref(null);
 const openProduct = (p = null) => {
   editing.value = p ? { ...p } : {
-    id: null, enterpriseId: 1, categoryId: categories.value[0]?.id ?? null, supplierId: null, name: '', slug: '',
-    description: '', sku: '', barCode: '', price: 0, costPrice: 0, weight: 0, height: 0, width: 0, length: 0,
+    id: null, enterpriseId: null, categoryId: categories.value[0]?.id ?? null, supplierId: null, name: '', slug: '',
+    // Dimensões vazias (não 0): o formulário obriga o preenchimento, o back recusa 0.
+    description: '', sku: '', barCode: '', price: 0, costPrice: 0, weight: '', height: '', width: '', length: '',
     brand: '', imageUrls: '', isActive: true, isDigital: false,
   };
 };
@@ -105,6 +107,7 @@ const saveProduct = useAction(async () => {
   const p = editing.value;
   const payload = {
     ...p,
+    enterpriseId: p.enterpriseId ?? currentEnterpriseId(),
     slug: p.slug.trim() || slugify(p.name),
     price: Number(p.price), costPrice: Number(p.costPrice),
     weight: Number(p.weight), height: Number(p.height), width: Number(p.width), length: Number(p.length),
@@ -124,7 +127,7 @@ const newCategory = ref('');
 const addCategory = useAction(async () => {
   const name = newCategory.value.trim();
   await admin.categories.add({
-    enterpriseId: 1, parentCategoryId: null, name, slug: slugify(name), description: '', imageUrl: '',
+    enterpriseId: currentEnterpriseId(), parentCategoryId: null, name, slug: slugify(name), description: '', imageUrl: '',
     displayOrder: categories.value.length + 1, isActive: true,
   });
   newCategory.value = '';
@@ -591,8 +594,55 @@ const toggleCategory = useAction(async (c) => {
             v-model="editing.weight"
             class="ds-input"
             type="number"
-            min="0"
+            min="0.01"
             step="0.01"
+            required
+          >
+        </div>
+        <!-- Produto físico (vitrine e drop): o back exige dimensões maiores que zero. -->
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="pr-height"
+          >Altura (cm)</label>
+          <input
+            id="pr-height"
+            v-model="editing.height"
+            class="ds-input"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+          >
+        </div>
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="pr-width"
+          >Largura (cm)</label>
+          <input
+            id="pr-width"
+            v-model="editing.width"
+            class="ds-input"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+          >
+        </div>
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="pr-length"
+          >Comprimento (cm)</label>
+          <input
+            id="pr-length"
+            v-model="editing.length"
+            class="ds-input"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
           >
         </div>
       </div>

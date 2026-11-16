@@ -4,7 +4,8 @@ import { AlertCircle, Plus, X } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
 import { admin, inviteMember, listAccessRoles, listInvitations, revokeInvitation } from '../../services/admin-api';
 import { MEMBERSHIP_KIND, labelOf } from '../../services/status';
-import { formatDate, formatMonthYear, initials, toDateInput, fromDateInput } from '../../services/format';
+import { formatDate, formatMonthYear, initials, toCalendarInput, fromCalendarInput } from '../../services/format';
+import { currentEnterpriseId } from '../../services/session';
 import LoadState from '../ui/LoadState.vue';
 import ModalDialog from '../ui/ModalDialog.vue';
 
@@ -29,11 +30,11 @@ const pendingInvitations = computed(() => (d.value?.invitations ?? []).filter((i
 // Funcionário
 const editing = ref(null);
 const openEmployee = (e) => {
-  editing.value = { ...e, hiredDate: toDateInput(e.hiredAt) };
+  editing.value = { ...e, hiredDate: toCalendarInput(e.hiredAt) };
 };
 const saveEmployee = useAction(async () => {
   const e = editing.value;
-  await admin.employees.update({ ...e, hiredAt: fromDateInput(e.hiredDate) });
+  await admin.employees.update({ ...e, hiredAt: fromCalendarInput(e.hiredDate) });
   editing.value = null;
   await data.reload();
 });
@@ -57,12 +58,12 @@ const revoke = useAction(async (id) => {
 const newPosition = ref('');
 const newDepartment = ref('');
 const addPosition = useAction(async () => {
-  await admin.positions.add({ enterpriseId: 1, name: newPosition.value.trim(), description: '', isActive: true });
+  await admin.positions.add({ enterpriseId: currentEnterpriseId(), name: newPosition.value.trim(), description: '', isActive: true });
   newPosition.value = '';
   await data.reload();
 });
 const addDepartment = useAction(async () => {
-  await admin.departments.add({ enterpriseId: 1, name: newDepartment.value.trim(), description: '', isActive: true });
+  await admin.departments.add({ enterpriseId: currentEnterpriseId(), name: newDepartment.value.trim(), description: '', isActive: true });
   newDepartment.value = '';
   await data.reload();
 });

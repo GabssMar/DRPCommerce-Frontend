@@ -1,16 +1,18 @@
 import { IS_MOCK, MOCK_LATENCY_MS, REQUEST_TIMEOUT_MS } from './config';
-import { ApiError } from './api-error';
+import { ApiError, networkError, timeoutError } from './api-error';
 import { logRequest } from './request-log';
-import { getAccessToken } from './session';
+import { getAccessToken, tokenClaims } from './session';
 import { mockFetch } from './mock/server';
 
 // Cliente HTTP único. Nenhuma tela chama fetch: tudo passa por request().
 //
-// Respostas aceitas:
-//   - envelope Result<T> { isSuccess, content, ... } dos CRUDs  -> devolve content
-//   - objeto/lista crua dos endpoints storefront/*              -> devolve como veio
-//   - 204                                                       -> null
-// Erros viram ApiError (ProblemDetails, envelope com isSuccess false, rede, timeout).
+// Respostas aceitas (decididas pelo corpo, não por lista de rotas):
+//   - envelope Result<T> { isSuccess, content, ... }   -> devolve content
+//   - DTO direto (identidade, storefront/me, store...) -> devolve como veio
+//   - 204 sem corpo                                    -> null
+// Erros viram ApiError com `kind` (ProblemDetails, envelope com isSuccess false,
+// rede, timeout). Com { withMeta: true } devolve { data, etag } para quem precisa
+// mandar If-Match depois (estoque, configurações, aparência).
 
 let refreshHandler = null;
 
@@ -41,7 +43,11 @@ const httpTransport = async (method, url, { headers, body }) => {
       credentials: 'include',
       signal: controller.signal,
     });
-    return { status: res.status, data: parseBody(await res.text()) };
+    return {
+      status: res.status,
+      data: parseBody(await res.text()),
+      headers: { etag: res.headers.get('ETag'), 'retry-after': res.headers.get('Retry-After') },
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -52,7 +58,11 @@ const mockTransport = async (method, url, { headers, body }) => {
   // Cópia: o mock nunca recebe nem devolve referência viva da tela.
   const payload = body === undefined ? undefined : JSON.parse(JSON.stringify(body));
   const res = mockFetch(method, url, payload, headers);
-  return { status: res.status, data: res.data === undefined ? null : JSON.parse(JSON.stringify(res.data)) };
+  return {
+    status: res.status,
+    data: res.data === undefined ? null : JSON.parse(JSON.stringify(res.data)),
+    headers: res.headers ?? {},
+  };
 };
 
 const unwrap = (data, status) => {
@@ -65,10 +75,19 @@ const unwrap = (data, status) => {
 
 /**
  * @param {'GET'|'POST'|'PUT'|'DELETE'} method
- * @param {string} url caminho no Gateway, ex.: /api/drop/drop-events/get-all
- * @param {{ body?: unknown, realm?: 'storefront'|'backoffice'|null, headers?: object }} [options]
+ * @param {string} url caminho no Gateway, ex.: /api/drop/api/drop-events/get-all
+ * @param {{ body?: unknown, realm?: 'storefront'|'backoffice'|null, headers?: object, withMeta?: boolean }} [options]
  */
-export async function request(method, url, { body, realm = 'backoffice', headers = {}, retry = true } = {}) {
+// 401 com token ainda válido = a rota não aceita este token (ex.: CRUD da equipe
+// chamado com token de cliente). Renovar não resolve e gasta o limite de requisições
+// das rotas de autenticação do back. Só renova se o token venceu ou vence em 30 s.
+// Token que não é JWT (mock) conta como vencido.
+const tokenExpired = (token) => {
+  const exp = tokenClaims(token)?.exp;
+  return !exp || exp * 1000 - Date.now() < 30_000;
+};
+
+export async function request(method, url, { body, realm = 'backoffice', headers = {}, retry = true, withMeta = false } = {}) {
   const finalHeaders = { Accept: 'application/json', ...headers };
   if (body !== undefined) finalHeaders['Content-Type'] = 'application/json';
   const token = realm ? getAccessToken(realm) : null;
@@ -78,21 +97,21 @@ export async function request(method, url, { body, realm = 'backoffice', headers
   try {
     res = await (IS_MOCK ? mockTransport : httpTransport)(method, url, { headers: finalHeaders, body });
   } catch (err) {
-    const timeout = err?.name === 'AbortError';
     logRequest({ method, url, status: 0, body, simulated: IS_MOCK });
-    throw new ApiError({ status: 0, code: timeout ? 'Timeout' : 'Network' });
+    throw err?.name === 'AbortError' ? timeoutError() : networkError();
   }
 
   logRequest({ method, url, status: res.status, body, simulated: IS_MOCK });
 
-  if (res.status === 401 && retry && realm && refreshHandler) {
+  if (res.status === 401 && retry && realm && refreshHandler && (!token || tokenExpired(token))) {
     const renewed = await refreshHandler(realm);
-    if (renewed) return request(method, url, { body, realm, headers, retry: false });
+    if (renewed) return request(method, url, { body, realm, headers, retry: false, withMeta });
   }
 
-  if (res.status < 200 || res.status >= 300) throw ApiError.fromResponse(res.status, res.data);
+  if (res.status < 200 || res.status >= 300) throw ApiError.fromResponse(res.status, res.data, res.headers);
 
-  return unwrap(res.data, res.status);
+  const data = res.status === 204 ? null : unwrap(res.data, res.status);
+  return withMeta ? { data, etag: res.headers?.etag ?? null } : data;
 }
 
 export const get = (url, options) => request('GET', url, options);

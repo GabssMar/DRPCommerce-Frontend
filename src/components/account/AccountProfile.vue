@@ -7,7 +7,7 @@ import { isSignedIn, REALMS } from '../../services/session';
 import { changeCustomerPassword, loginCustomer, logoutCustomer, registerCustomer } from '../../services/auth';
 import { deactivateMe, getMe, getMyDocuments, sendDocument, updateMe } from '../../services/client-api';
 import { DOCUMENT_STATUS, STATES } from '../../services/status';
-import { formatDate, formatDateYear, fromDateInput, toDateInput } from '../../services/format';
+import { formatDate, formatDateYear, fromCalendarInput, toCalendarInput } from '../../services/format';
 import AccountNav from './AccountNav.vue';
 import LoadState from '../ui/LoadState.vue';
 import ModalDialog from '../ui/ModalDialog.vue';
@@ -43,7 +43,7 @@ watch(me, (customer) => {
   if (!customer) return;
   Object.assign(form, {
     fullName: customer.fullName, email: customer.email, phone: customer.phone,
-    dateOfBirth: toDateInput(customer.dateOfBirth), gender: customer.gender || GENDERS[3],
+    dateOfBirth: toCalendarInput(customer.dateOfBirth), gender: customer.gender || GENDERS[3],
     zipCode: customer.zipCode, addressLine: customer.addressLine, city: customer.city,
     stateId: customer.stateId, country: customer.country || 'Brasil',
   });
@@ -64,7 +64,7 @@ const profilePayload = () => ({
   zipCode: form.zipCode.trim(),
   country: form.country.trim() || 'Brasil',
   gender: form.gender,
-  dateOfBirth: fromDateInput(form.dateOfBirth),
+  dateOfBirth: fromCalendarInput(form.dateOfBirth),
 });
 
 const save = useAction(async () => {

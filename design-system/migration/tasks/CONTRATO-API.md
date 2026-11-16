@@ -11,24 +11,45 @@ Levantado no código em 2026-09-28 (`backend/DROP-Ecommerce`, `frontend/src/serv
 
 | Serviço | Porta | Papel |
 |---|---|---|
-| Front-end (Vite) | 5173 | SPA Vue. Em dev, faz proxy de `/api` para o Gateway |
-| `Commerce.Gateway` (YARP) | 5000 | Ponto de entrada único. `/api/drop/**` → Drop API, `/api/store/**` → Store API |
-| `DropCommerce.Api` | 5002 | Toda a API consumida pelo front |
-| `StoreCommerce.Api` | 5001 | Catálogo canônico. Consumido pelo back-end do Drop (Refit) e, **pelo Gateway em `/api/store/**`**, pela Vitrine e pelo painel do administrador. Hoje **não tem controllers** (task 19 §1) |
+| Front-end (Vite) | 5173 | SPA Vue. Em dev, faz proxy de `/api` para o Gateway (`VITE_GATEWAY_URL`, padrão `https://localhost:5000`, certificado de dev aceito) |
+| `Commerce.Gateway` (YARP) | 5000 (HTTPS) | Ponto de entrada único. `/api/drop/**` → Drop API, `/api/store/**` → Store API. Sem Swagger próprio |
+| `DropCommerce.Api` | 5002 (HTTPS) | Drop: eventos, fila, inscrições, reservas. Swagger em `/swagger` |
+| `StoreCommerce.Api` | 5001 (HTTPS) | Loja: identidade, catálogo, carrinho, checkout, pedidos, painel. Swagger em `/swagger` |
 
-O front chama **sempre o Gateway**. URL base: `VITE_API_BASE_URL`, padrão `/api/drop`.
+O front chama **sempre o Gateway**. Bases: `STORE_BASE = /api/store/api` e `DROP_BASE = /api/drop/api` (`VITE_STORE_API_BASE_URL`, `VITE_DROP_API_BASE_URL`).
+
+**O caminho externo tem `/api` duas vezes.** O Gateway remove o prefixo do serviço (`PathRemovePrefix`) e os controllers ficam em `/api/...`:
 
 ```
-front  GET /api/drop/drop-events/get-public
-  ↓ Vite proxy (dev) → http://localhost:5000
-gateway  /api/drop/{**}  →  /api/{**}      (depois da correção da task 10)
+front    GET /api/store/api/storefront/store
+  ↓ Vite proxy (dev) → https://localhost:5000
+gateway  /api/store/{**}  →  /{**}
   ↓
-drop-api GET /api/drop-events/get-public
+store    GET /api/storefront/store
 ```
 
-> **Hoje o Gateway remove `/api/drop` e encaminha `/drop-events/...`**, mas os controllers estão em `/api/drop-events/...`. Toda chamada pelo Gateway dá 404. Correção na task 10.
+Conferido contra o back local em 15/11/2026: `/api/store/api/auth/csrf` responde 200 pelo proxy do Vite. Sem o `/api` duplo, a rota não existe.
+
+### Testado contra o back local (15/11/2026)
+
+- **CSRF:** o token vale para o contexto de autenticação em que foi emitido. `GET auth/csrf` vai com o access token atual; com um CSRF pedido antes do login, `select-enterprise`, `refresh` e `logout` respondem 403 "Token CSRF inválido". O `auth.js` guarda o CSRF por token.
+- **Vitrine por subdomínio:** o Store resolve a loja pelo `Host` (`<slug>.stores.localhost`, `Security__StorefrontBaseDomain`). Direto no Store, `Host: teste.stores.localhost` responde 200. **Pelo Gateway dá 404 `Enterprise.Unavailable`:** o YARP troca o `Host` pelo do destino e o Store ignora `X-Forwarded-Host`. Correção no back: preservar o Host original nas rotas do Gateway (`RequestHeaderOriginalHost`) ou aceitar `X-Forwarded-Host` no Store. O proxy do Vite já preserva o Host (`changeOrigin: false`); abra o front em `http://<slug>.stores.localhost:5173`.
+- **429:** o limite cobre todo o grupo `auth/*`, inclusive `csrf`. A resposta vem como `{ code, message }`, sem ProblemDetails e sem `Retry-After`.
+- **`If-Match`:** só nas sessões de edição de aparência (`appearances/edit-sessions/*`). `store-settings` aceita PUT sem versão e não devolve `ETag`.
+- **`storefront/store`** devolve `Result<T>`, não DTO direto.
 
 ## 2. Formato das respostas
+
+`request()` (`src/services/http.js`) decide pelo **corpo**, não por lista de rotas:
+
+| Resposta | Exemplos | O que `request()` devolve |
+|---|---|---|
+| `Result<T>` (`isSuccess`, `content`, `errors`, `listMessageErrors`) | CRUD, rotas novas de caso de uso | `content` |
+| DTO direto | `auth/*`, `storefront/me`, `storefront/store`, `storefront/products` | o corpo como veio |
+| `PagedResponse<T>` (`items`, `totalCount`, `page`, `pageSize`) | rotas `search` | o corpo; a tela passa por `toPage()` de `paging.js` |
+| 204 sem corpo | desativar funcionário, `DELETE storefront/me` | `null` |
+
+Com `{ withMeta: true }`, `request()` devolve `{ data, etag }`. O `ETag` volta no `If-Match` das rotas que exigem versão. Query das rotas `search`: `searchQuery()` em `paging.js` (`Page` de 1 a 100.000, `PageSize` de 1 a 100, filtros vazios omitidos).
 
 ### Sucesso: HTTP 200 com envelope `Result<T>`
 
@@ -79,10 +100,15 @@ Validação (400) usa `ValidationProblemDetails`, com `errors` agrupados pelo **
 | 400 | `Validation` / `Failure` | erro por campo (validação) ou mensagem do `detail` |
 | 401 / 403 | `Unauthorized` / `Forbidden` | mensagem de sessão; sem retry automático |
 | 404 | `NotFound` | estado "não encontrado" da tela |
-| 409 | `Conflict` | regra de negócio (já na fila, esgotado, janela expirada): mensagem própria pelo `code` |
+| 409 | `Conflict` | regra de negócio (já na fila, esgotado, janela expirada, estoque): mensagem própria pelo `code` |
+| 412 | versão antiga | "Outra pessoa alterou este registro": recarregar e pegar o novo `ETag` |
+| 428 | falta `If-Match` | erro de integração: a tela não mandou a versão |
+| 429 | limite de requisições | espera os segundos de `Retry-After` |
 | 503 | `Unavailable` | "Serviço indisponível", retry com backoff |
 | 500 | exceção não tratada | mensagem genérica + `traceId` no log |
 | rede / timeout | — | "Reconectando…", mantém o último dado na tela |
+
+Cada erro chega às telas como `ApiError` com `kind`: `validation` (400), `auth` (401), `forbidden` (403), `not-found` (404), `conflict` (409), `stale` (412), `precondition` (428), `rate-limit` (429, com `retryAfter`), `unavailable` (503), `server` (outros 5xx), `network` e `timeout`. As telas decidem pelo `kind`, nunca pelo número. `LoadState` esconde "Tentar de novo" em `forbidden`, `not-found` e `validation`.
 
 ## 3. Tabelas de status (ids fixos, seed do banco)
 
