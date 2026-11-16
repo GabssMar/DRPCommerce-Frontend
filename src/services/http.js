@@ -1,7 +1,7 @@
 import { IS_MOCK, MOCK_LATENCY_MS, REQUEST_TIMEOUT_MS } from './config';
 import { ApiError, networkError, timeoutError } from './api-error';
 import { logRequest } from './request-log';
-import { getAccessToken } from './session';
+import { getAccessToken, tokenClaims } from './session';
 import { mockFetch } from './mock/server';
 
 // Cliente HTTP único. Nenhuma tela chama fetch: tudo passa por request().
@@ -83,12 +83,8 @@ const unwrap = (data, status) => {
 // das rotas de autenticação do back. Só renova se o token venceu ou vence em 30 s.
 // Token que não é JWT (mock) conta como vencido.
 const tokenExpired = (token) => {
-  try {
-    const { exp } = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return !exp || exp * 1000 - Date.now() < 30_000;
-  } catch {
-    return true;
-  }
+  const exp = tokenClaims(token)?.exp;
+  return !exp || exp * 1000 - Date.now() < 30_000;
 };
 
 export async function request(method, url, { body, realm = 'backoffice', headers = {}, retry = true, withMeta = false } = {}) {

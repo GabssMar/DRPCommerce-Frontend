@@ -5,6 +5,7 @@ import { useAsync, useAction } from '../../composables/useAsync';
 import { admin, inviteMember, listAccessRoles, listInvitations, revokeInvitation } from '../../services/admin-api';
 import { MEMBERSHIP_KIND, labelOf } from '../../services/status';
 import { formatDate, formatMonthYear, initials, toCalendarInput, fromCalendarInput } from '../../services/format';
+import { currentEnterpriseId } from '../../services/session';
 import LoadState from '../ui/LoadState.vue';
 import ModalDialog from '../ui/ModalDialog.vue';
 
@@ -57,12 +58,12 @@ const revoke = useAction(async (id) => {
 const newPosition = ref('');
 const newDepartment = ref('');
 const addPosition = useAction(async () => {
-  await admin.positions.add({ enterpriseId: 1, name: newPosition.value.trim(), description: '', isActive: true });
+  await admin.positions.add({ enterpriseId: currentEnterpriseId(), name: newPosition.value.trim(), description: '', isActive: true });
   newPosition.value = '';
   await data.reload();
 });
 const addDepartment = useAction(async () => {
-  await admin.departments.add({ enterpriseId: 1, name: newDepartment.value.trim(), description: '', isActive: true });
+  await admin.departments.add({ enterpriseId: currentEnterpriseId(), name: newDepartment.value.trim(), description: '', isActive: true });
   newDepartment.value = '';
   await data.reload();
 });

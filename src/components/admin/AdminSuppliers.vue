@@ -5,6 +5,7 @@ import { useAsync, useAction } from '../../composables/useAsync';
 import { admin } from '../../services/admin-api';
 import { STATES, ufOf } from '../../services/status';
 import { brl } from '../../services/format';
+import { currentEnterpriseId } from '../../services/session';
 import CatalogTabs from './CatalogTabs.vue';
 import LoadState from '../ui/LoadState.vue';
 import ModalDialog from '../ui/ModalDialog.vue';
@@ -37,7 +38,7 @@ const durationLabel = (minutes) => {
 
 // Fornecedor (formulário na página, como no design)
 const blankSupplier = () => ({
-  id: null, enterpriseId: 1, companyName: '', contactName: '', email: '', phone: '', addressLine: '', city: '',
+  id: null, enterpriseId: null, companyName: '', contactName: '', email: '', phone: '', addressLine: '', city: '',
   stateId: '', zipCode: '', country: 'Brasil', isActive: true,
 });
 const supplier = ref(blankSupplier());
@@ -56,7 +57,7 @@ const newSupplier = () => {
 };
 const saveSupplier = useAction(async () => {
   const s = supplier.value;
-  const payload = { ...s, email: { value: s.email.trim() }, phone: { value: s.phone.trim() }, stateId: Number(s.stateId) };
+  const payload = { ...s, enterpriseId: s.enterpriseId ?? currentEnterpriseId(), email: { value: s.email.trim() }, phone: { value: s.phone.trim() }, stateId: Number(s.stateId) };
   delete payload.productCount;
   if (s.id) await admin.suppliers.update(payload);
   else await admin.suppliers.add(payload);
@@ -68,13 +69,13 @@ const saveSupplier = useAction(async () => {
 const service = ref(null);
 const openService = (s = null) => {
   service.value = s ? { ...s, durationDays: Math.round(s.durationMinutes / 1440) } : {
-    id: null, enterpriseId: 1, categoryId: data.data.value?.categories[0]?.id ?? null, name: '', description: '',
+    id: null, enterpriseId: null, categoryId: data.data.value?.categories[0]?.id ?? null, name: '', description: '',
     price: 0, durationDays: 1, isActive: true,
   };
 };
 const saveService = useAction(async () => {
   const s = service.value;
-  const payload = { ...s, price: Number(s.price), durationMinutes: Math.round(Number(s.durationDays) * 1440) };
+  const payload = { ...s, enterpriseId: s.enterpriseId ?? currentEnterpriseId(), price: Number(s.price), durationMinutes: Math.round(Number(s.durationDays) * 1440) };
   delete payload.durationDays;
   if (s.id) await admin.services.update(payload);
   else await admin.services.add(payload);

@@ -31,3 +31,24 @@ export const clearSession = (realm) => {
 };
 
 export const isSignedIn = (realm) => Boolean(session[realm]?.accessToken);
+
+// Claims do access token (JWT, sem validar a assinatura: só leitura na tela).
+// Token que não é JWT (mock) devolve null.
+export const tokenClaims = (token) => {
+  try {
+    return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+  } catch {
+    return null;
+  }
+};
+
+// Loja em que a equipe está trabalhando: claim EnterpriseId do token, gravado no
+// login (ou no select-enterprise, para quem tem mais de uma loja). Cadastros novos
+// (produto, categoria, fornecedor, cupom, drop...) levam esse id.
+const MOCK_ENTERPRISE_ID = 1;
+export const currentEnterpriseId = () => {
+  const id = Number(tokenClaims(getAccessToken(REALMS.backoffice))?.EnterpriseId);
+  if (id > 0) return id;
+  if (IS_MOCK) return MOCK_ENTERPRISE_ID;
+  throw new Error('Sessão sem loja selecionada. Entre de novo no painel.');
+};
