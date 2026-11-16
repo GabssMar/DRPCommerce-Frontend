@@ -45,7 +45,6 @@ src/
 ├── main.js               entrada: Design System, initTheme(), restaura sessão (modo http), monta o App
 ├── router.js             rotas por hash (#/conta, #/admin/pedidos…), sem Vue Router
 ├── App.vue               shell da loja; #/admin/* monta components/admin/AdminApp.vue
-├── index.css             tema LEGADO (neon/glass) — em migração
 ├── components/
 │   ├── *.vue             portal, detalhe do drop, fila, vitrine, sacola, StoreCheckout (C10)
 │   ├── drop/             DropRegistration (C3) · DropWaitlist (C6)

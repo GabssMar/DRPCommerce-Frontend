@@ -20,7 +20,7 @@ Este front-end tem um design system completo em `design-system/`. **Não invente
 2. **Azul de marca `#83A2DB` é superfície, nunca texto** (2.58:1 sobre branco). Texto/link de marca = `--ds-text-brand` (#4A6FB5).
 3. **Botão primário é tinta**, não azul: `.ds-btn--primary`. Um por tela.
 4. **Light e dark sempre juntos.** Token só no `:root` está incompleto.
-5. **Sem glow, glass, gradiente de marca ou sombra colorida.** O tema legado em `src/index.css` tem tudo isso e está em migração — não copie dele.
+5. **Sem glow, glass, gradiente de marca ou sombra colorida.** O tema legado que tinha tudo isso foi removido; `npm run ds:check` barra a volta dele.
 
 ## Classes prontas (não reescreva)
 

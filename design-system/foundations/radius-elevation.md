@@ -43,4 +43,4 @@ A referência separa superfícies por **contraste de valor + sombra difusa**, n�
 | Sombra com deslocamento horizontal | só vertical |
 | Elevação animada > 4px no hover | `translateY(-2px)` |
 
-O tema legado do projeto (`src/index.css`) é construído inteiramente sobre glow e glass — ver `../migration/from-neon-glass.md`.
+O tema legado do projeto (removido na task 09) era construído inteiramente sobre glow e glass — ver `../migration/from-neon-glass.md`.

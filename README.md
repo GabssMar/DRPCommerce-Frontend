@@ -21,7 +21,9 @@ npm install
 npm run dev
 ```
 
-Abra **http://localhost:5173**. O painel do administrador fica em **http://localhost:5173/#/admin**.
+Abra **http://localhost:5173**. A primeira tela é a **página de apresentação** do DRP Commerce, com as opções de criar conta, entrar como cliente ou entrar como lojista. Só o cliente logado navega pelos drops, pela vitrine e pela conta; o lojista entra no painel em **http://localhost:5173/#/admin**, com login separado. Quem já está logado não vê a apresentação: o cliente vai direto para os drops e o lojista para o dashboard.
+
+No modo de exemplo, os dois começam deslogados: o cliente entra com `camila.duarte@exemplo.com` e qualquer senha, e o lojista com qualquer e-mail e senha.
 
 Não precisa do back-end para ver o projeto funcionando: por padrão o front usa **dados de exemplo** (veja abaixo).
 
@@ -32,6 +34,7 @@ Não precisa do back-end para ver o projeto funcionando: por padrão o front usa
 | `npm run build` | Gera a versão de produção na pasta `dist/` |
 | `npm run preview` | Abre a versão de produção localmente |
 | `npm run lint` | Confere o padrão do código |
+| `npm run ds:check` | Confere se os componentes seguem o Design System (roda também antes de cada commit) |
 
 ---
 
@@ -103,10 +106,10 @@ As três regras principais:
 
 | Pronto | Em andamento |
 |---|---|
-| Migração para Vue 3 e Design System | Remover o tema visual antigo (`src/index.css`) |
-| Telas da loja, da conta e do drop | Ligar portal, fila e checkout do drop ao back-end |
-| Painel do administrador (com dados de exemplo) | Usar as novas rotas do back-end: carrinho, checkout, estoque, pedidos… |
-| Login, cadastro e renovação de sessão | Pagamento (Mercado Pago) e frete (Melhor Envio), que dependem do back-end |
+| Migração para Vue 3 e Design System, com o tema antigo removido | Ligar portal, fila e checkout do drop ao back-end |
+| Telas da loja, da conta e do drop | Usar as novas rotas do back-end: carrinho, checkout, estoque, pedidos… |
+| Painel do administrador (com dados de exemplo) | Pagamento (Mercado Pago) e frete (Melhor Envio), que dependem do back-end |
+| Login, cadastro e renovação de sessão | |
 
 O planejamento completo, com uma task por funcionalidade, está em [`design-system/migration/tasks/`](./design-system/migration/tasks/README.md). O mapa de qual tela usa qual rota do back-end está em [`CONTRATO-API.md`](./design-system/migration/tasks/CONTRATO-API.md).
 

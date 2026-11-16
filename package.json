@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "ds:check": "node scripts/ds-check.js",
     "preview": "vite preview",
     "prepare": "husky"
   },

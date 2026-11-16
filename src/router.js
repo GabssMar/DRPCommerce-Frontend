@@ -6,6 +6,8 @@ import { shallowRef } from 'vue';
 const ROUTES = [
   // Loja
   ['portal', '/'],
+  ['login', '/entrar'],
+  ['register', '/criar-conta'],
   ['drop', '/drops/:id'],
   ['drop-registration', '/drops/:id/inscricao'],
   ['drop-waitlist', '/drops/:id/lista-de-espera'],

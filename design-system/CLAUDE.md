@@ -43,7 +43,7 @@
 
 - ❌ `:style="{ color: '#83A2DB' }"` → ✅ `class="ds-text-brand"` ou `var(--ds-text-brand)`
 - ❌ `border-radius: 8px` avulso → ✅ `var(--ds-radius-sm)`
-- ❌ Glassmorphism, neon glow, gradiente de marca → o sistema é **flat, claro, com sombra difusa**. (O CSS antigo em `src/index.css` é legado; ver `migration/`.)
+- ❌ Glassmorphism, neon glow, gradiente de marca → o sistema é **flat, claro, com sombra difusa**. (O tema antigo foi removido na task 09; `npm run ds:check` barra a volta dele.)
 - ❌ Nova família tipográfica → só `--ds-font-display` e `--ds-font-sans`.
 - ❌ Sombra colorida (`0 0 20px azul`) → sombras são sempre neutras e verticais.
 - ❌ `!important` (a única ocorrência legítima no sistema é o bloco `prefers-reduced-motion` em `styles/base.css`).
@@ -75,5 +75,7 @@ Componentes vivem em `styles/components.css`; utilitários em `styles/utilities.
 
 - Vue 3 (Composition API, `<script setup>`) + Vite 8, CSS puro (sem Tailwind, sem CSS-in-JS). **Não introduza** framework de estilo sem pedido explícito.
 - Ícones: `@lucide/vue` já instalado.
-- `src/index.css` contém o tema legado *dark neon glass* (roxo/ciano). O Design System **substitui** esse tema — migração em `migration/from-neon-glass.md`.
-- Fontes carregadas no `index.html`: **Poppins** (display) + **Inter** (UI), desde a task 01. O tema legado ainda declara `Outfit` em `--font-heading` até a task 09.
+- O tema legado *dark neon glass* (`src/index.css`) foi **removido** na task 09. O único CSS do app é o do Design System, importado em `src/main.js` (`design-system/styles/index.css`).
+- `npm run ds:check` (`scripts/ds-check.js`, também no pre-commit) falha com hex literal ou bloco `<style>` em `.vue` e com qualquer token ou classe do tema antigo em `src/`.
+- Fontes carregadas no `index.html`: **Poppins** (display) + **Inter** (UI), desde a task 01.
+- Ferramenta interna: o simulador do drop (`SimulationPanel.vue`) usa o componente `ds-dock` e só existe no servidor de desenvolvimento.

@@ -2,13 +2,14 @@
 
 Quarenta e quatro tasks: **00–09** migram o front para Vue e para o Design System; **10–18** conectam o front ao back-end; **19–26** entregam o **painel do administrador da loja**; **27–43** consomem as regras comerciais, a identidade e a aparência que o back-end documentou em 03/11/2026. Cada uma tem o tamanho de **uma funcionalidade / uma PR**.
 
-## Situação (03/11/2026)
+## Situação (16/11/2026)
 
 | Situação | Tasks |
 |---|---|
-| **Concluídas** | 00, 01, 02, 03, 04, 05, 06, 07 (PR #21) · 15, 20, 21, 22, 23, 24, 25, 26 (PR #23, em `VITE_API_MODE=mock`) |
-| Abertas no front | 08 (`SimulationPanel.vue` ainda tem 60 estilos inline e 26 hex) · 09 (`src/index.css` legado ainda importado) · 16, 17, 18 (portal, fila e checkout do drop ainda usam o simulador `api.js`) |
-| Back-end, parcial | 10 (CORS e autenticação feitos; o Gateway ainda remove o prefixo, ver task 27) · 12 (entrar e consultar feitos; sair e restaurar pendentes) · 19 (controllers do Store, busca paginada e estoque feitos; `sales-summary` não existe) |
+| **Concluídas** | 00, 01, 02, 03, 04, 05, 06, 07 (PR #21) · 08, 09 (tema antigo removido, `npm run ds:check` no pre-commit) · 27 (contrato v2) · 15, 20, 21, 22, 23, 24, 25, 26 (PR #23, em `VITE_API_MODE=mock`) |
+| Abertas no front | 16, 17, 18 (portal, fila e checkout do drop ainda usam o simulador `api.js`) |
+| Back-end, parcial | 10 (CORS e autenticação feitos; o Gateway perde o Host e as rotas `storefront/*` respondem 404, ver `PENDENCIAS-BACKEND-2026-11-16.md`) · 12 (entrar e consultar feitos; sair e restaurar pendentes) · 19 (controllers do Store, busca paginada e estoque feitos; `sales-summary` não existe) |
+| Decisão (16/11) | A loja exige login do cliente. Sem sessão, `#/` mostra a página de apresentação (`LandingPage.vue`), `#/entrar` e `#/criar-conta` o formulário (`CustomerAuth.vue`) e qualquer outra rota da loja o login. O lojista entra pelo painel (`#/admin`), com login separado. Logado, `#/` leva o cliente aos drops e o lojista ao dashboard. Isso substitui o "portal como primeira tela" da task 03 e a sacola de visitante da task 30. |
 | Back-end, pendente | 11 (evento por slug), 13 (admissão e expiração da fila), 14 (reserva e venda do Drop integradas ao Store) |
 | Novas | 27–43 | Cada arquivo é o corpo pronto da issue: o título é a primeira linha (`# …`), o resto é a descrição.
 
@@ -119,7 +120,7 @@ Levantada da [documentação do back-end](https://github.com/joseHenrique346/DRP
 | 42 | Aparência: catálogo de temas, renderer e editor | Aparência | 27, 40 |
 | 43 | Pagamento Mercado Pago e frete Melhor Envio | Integrações | 32, 37 · **bloqueada pelo back** |
 
-**27 bloqueia a série.** É o motivo de `VITE_API_MODE=http` não funcionar hoje: o Gateway remove `/api/store` e os controllers esperam `/api/...`, então o caminho externo é `/api/store/api/...`. 29–32 (vitrine), 33–39 (admin) e 42 correm em paralelo. 33, 34, 36 e 37 substituem trechos das tasks 25 e 26 que gravavam por CRUD, o que o back passou a bloquear.
+**27 bloqueava a série** e foi concluída: o caminho externo agora é `/api/store/api/...`, porque o Gateway remove `/api/store` e os controllers esperam `/api/...`. 29–32 (vitrine), 33–39 (admin) e 42 correm em paralelo. 33, 34, 36 e 37 substituem trechos das tasks 25 e 26 que gravavam por CRUD, o que o back passou a bloquear.
 
 ## Linha de base medida
 

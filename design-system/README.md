@@ -60,7 +60,7 @@ import '../design-system/styles/index.css';
 
 O tema padrão é **claro** (o da referência): `initTheme()` aplica `data-theme="light"` mesmo com o sistema operacional em modo escuro. O escuro só entra se o usuário escolher, com `setTheme('dark')` de `tokens/tokens.js`.
 
-O CSS legado do app (`src/index.css`, tema neon/glass) ainda está ativo — o plano de substituição está em [`migration/from-neon-glass.md`](./migration/from-neon-glass.md).
+O CSS legado do app (`src/index.css`, tema neon/glass) foi removido na task 09. O histórico da migração está em [`migration/from-neon-glass.md`](./migration/from-neon-glass.md), e `npm run ds:check` impede que ele volte.
 
 ## Como usar no dia a dia
 
