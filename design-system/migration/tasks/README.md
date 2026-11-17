@@ -6,12 +6,16 @@ Quarenta e quatro tasks: **00–09** migram o front para Vue e para o Design Sys
 
 | Situação | Tasks |
 |---|---|
-| **Concluídas** | 00, 01, 02, 03, 04, 05, 06, 07 (PR #21) · 08, 09 (tema antigo removido, `npm run ds:check` no pre-commit) · 27 (contrato v2) · 15, 20, 21, 22, 23, 24, 25, 26 (PR #23, em `VITE_API_MODE=mock`) |
+| **Concluídas** | 00, 01, 02, 03, 04, 05, 06, 07 (PR #21) · 08, 09 (PR #30: tema antigo removido, `npm run ds:check` no pre-commit) · 27 (contrato v2) · 15, 20, 21, 22, 23, 24, 25, 26 (PR #23, em `VITE_API_MODE=mock`) |
 | Abertas no front | 16, 17, 18 (portal, fila e checkout do drop ainda usam o simulador `api.js`) |
 | Back-end, parcial | 10 (CORS e autenticação feitos; o Gateway perde o Host e as rotas `storefront/*` respondem 404, ver `PENDENCIAS-BACKEND-2026-11-16.md`) · 12 (entrar e consultar feitos; sair e restaurar pendentes) · 19 (controllers do Store, busca paginada e estoque feitos; `sales-summary` não existe) |
 | Decisão (16/11) | A loja exige login do cliente. Sem sessão, `#/` mostra a página de apresentação (`LandingPage.vue`), `#/entrar` e `#/criar-conta` o formulário (`CustomerAuth.vue`) e qualquer outra rota da loja o login. O lojista entra pelo painel (`#/admin`), com login separado. Logado, `#/` leva o cliente aos drops e o lojista ao dashboard. Isso substitui o "portal como primeira tela" da task 03 e a sacola de visitante da task 30. |
 | Back-end, pendente | 11 (evento por slug), 13 (admissão e expiração da fila), 14 (reserva e venda do Drop integradas ao Store) |
 | Novas | 27–43 | Cada arquivo é o corpo pronto da issue: o título é a primeira linha (`# …`), o resto é a descrição.
+
+> Os arquivos das tasks concluídas foram apagados desta pasta. As tabelas abaixo continuam listando todas as tasks como mapa de
+> dependências; o texto completo das concluídas está no histórico do git (`git log --diff-filter=D -- design-system/migration/tasks/`)
+> e nas issues fechadas do repositório.
 
 Destino: [Project 1 de joseHenrique346](https://github.com/users/joseHenrique346/projects/1/views/1), coluna **Design**.
 
