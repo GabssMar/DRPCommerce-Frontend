@@ -23,7 +23,15 @@ Uma loja virtual com três áreas no mesmo app:
 - **Vitrine**: loja do dia a dia, sem fila (catálogo, sacola e checkout).
 - **Painel do administrador** (`#/admin`): o lojista acompanha vendas e gerencia drops, produtos, cupons, pedidos, clientes e equipe.
 
-O cliente tem ainda a área **Minha conta** (perfil, pedidos, notificações). A loja exige login: sem sessão, `#/` mostra a página de apresentação (`LandingPage.vue`).
+O cliente tem ainda a área **Minha conta** (perfil, pedidos, notificações). A loja exige login. A página inicial (`#/`) depende da sessão:
+
+| Quem abre `#/` | Vai para |
+|---|---|
+| Ninguém logado | Página de apresentação (`LandingPage.vue`) |
+| Cliente logado | Portal de drops (a sessão de cliente tem prioridade se as duas existirem) |
+| Só o lojista logado | Dashboard do painel (`#/admin`) |
+
+Sem sessão de cliente, `#/entrar` e `#/criar-conta` mostram o formulário e qualquer outra rota da loja mostra o login; depois de entrar, a rota pedida aparece. A regra fica num `watch` em `App.vue`.
 
 ---
 
@@ -48,9 +56,11 @@ Requisito: Node 20.19 ou 22.12+.
 ```
 frontend/
 ├── src/
-│   ├── main.js            entrada: carrega o DS, aplica o tema, restaura a sessão (modo http) e monta o App
+│   ├── main.js            entrada: carrega o DS, aplica o tema, restaura as sessões do cliente e do lojista
+│   │                      (modo http, pelo cookie de refresh) e só então monta o App
 │   ├── router.js          rotas por hash (#/vitrine, #/conta/pedidos, #/admin/drops/:id…)
-│   ├── App.vue            shell da loja; rotas #/admin/* montam components/admin/AdminApp.vue
+│   ├── App.vue            shell da loja; decide a página inicial pela sessão; rotas #/admin/* montam
+│   │                      components/admin/AdminApp.vue
 │   ├── components/
 │   │   ├── *.vue          portal de drops, detalhe, fila, checkout do drop, vitrine, sacola,
 │   │   │                  checkout da vitrine, landing page, painel de simulação
@@ -85,7 +95,7 @@ frontend/
 
 | `VITE_API_MODE` | Comportamento |
 |---|---|
-| `mock` (padrão) | Sem servidor. As funções de `services/` caem em `mock/server.js`. Login do cliente: `camila.duarte@exemplo.com` + qualquer senha. Login do lojista: qualquer e-mail e senha. O painel mostra as requisições que **seriam** enviadas |
+| `mock` (padrão) | Sem servidor. As funções de `services/` caem em `mock/server.js`. Login do cliente: `camila.duarte@exemplo.com` + qualquer senha. Login do lojista: qualquer e-mail e senha. Os dois começam deslogados e as sessões de exemplo sobrevivem ao F5 (`sessionStorage`). O painel mostra as requisições que **seriam** enviadas |
 | `http` | Chama o Gateway (`https://localhost:5000`) pelo proxy do Vite. Abra o front em **http://teste.stores.localhost:5173** (a loja é identificada pelo subdomínio) |
 
 ---
@@ -103,7 +113,7 @@ frontend/
 | Contrato v2: prefixo `/api/<serviço>/api`, envelope `Result`, paginação, erros por `kind` | 27 | PR #28/#29 |
 | Login, cadastro e renovação de sessão (cliente e equipe), seleção de loja do lojista | parte da 28 | — |
 | Painel usando a loja da sessão no lugar de um `enterpriseId` fixo | — | PR #28 |
-| Login obrigatório na loja + página de apresentação para visitantes | — | PR #30 |
+| Login obrigatório na loja, página de apresentação para visitantes e página inicial por sessão (cliente vai aos drops, lojista ao dashboard; F5 restaura as duas sessões) | — | PR #30 |
 | Testes do front contra o back local e lista de pendências para o back | — | `TESTES-BACKEND-LOCAL-*.md`, `PENDENCIAS-BACKEND-*.md`, `../test-dashboard` |
 
 ---
