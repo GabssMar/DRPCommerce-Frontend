@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { AlertCircle } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
-import { admin, removeQueueEntries, writeAudit } from '../../services/admin-api';
+import { admin, writeAudit } from '../../services/admin-api';
 import { FRAUD_SEVERITY, FRAUD_SIGNAL_TYPE, QUEUE_ENTRY_STATUS, labelOf, options } from '../../services/status';
 import { formatDateTime, formatNumber, formatTimeSec } from '../../services/format';
 import LoadState from '../ui/LoadState.vue';
@@ -61,7 +61,6 @@ const linked = computed(() => {
       && (e.id === s.queueEntryId || e.deviceFingerprint === s.deviceFingerprint || e.ipAddress === s.ipAddress))
     .sort((a, b) => a.position - b.position);
 });
-const removable = computed(() => linked.value.filter((e) => [1, 2].includes(e.queueEntryStatusId)));
 
 const note = ref('');
 watch(openId, () => { note.value = ''; });
@@ -69,16 +68,17 @@ watch(openId, () => { note.value = ''; });
 const review = useAction(async (confirm) => {
   const s = open.value;
   const now = new Date().toISOString();
-  await admin.fraudSignals.patch(s, { isConfirmed: confirm, wasBlocked: confirm && removable.value.length > 0, reviewedAt: now });
-  if (confirm && removable.value.length) await removeQueueEntries(removable.value);
+  // A fila não aceita remoção pelo painel (o CRUD de queue-entries responde 403 DropPurchase.UseWorkflow):
+  // confirmar só registra a revisão do sinal.
+  await admin.fraudSignals.patch(s, { isConfirmed: confirm, wasBlocked: false, reviewedAt: now });
   await writeAudit({
     eventId: s.dropEventId,
     customerId: s.customerId,
-    action: confirm ? `Confirmou fraude e removeu ${removable.value.length} da fila` : 'Marcou sinal como falso positivo',
+    action: confirm ? 'Confirmou fraude' : 'Marcou sinal como falso positivo',
     entityName: 'FraudSignal',
     entityId: s.id,
     oldValues: { isConfirmed: s.isConfirmed, wasBlocked: s.wasBlocked },
-    newValues: { isConfirmed: confirm, wasBlocked: confirm && removable.value.length > 0, note: note.value.trim() || undefined },
+    newValues: { isConfirmed: confirm, wasBlocked: false, note: note.value.trim() || undefined },
   }).catch(() => {});
   await data.reload();
 });
@@ -305,10 +305,10 @@ const review = useAction(async (confirm) => {
               :disabled="review.isPending.value"
               @click="review.run(true)"
             >
-              {{ removable.length ? `Confirmar e remover ${removable.length}` : 'Confirmar fraude' }}
+              Confirmar fraude
             </button>
           </div>
-          <span class="ds-hint">Remover tira as entradas da fila (status Removido) e libera as posições.</span>
+          <span class="ds-hint">O back ainda não tem rota para tirar alguém da fila: confirmar registra a revisão e entra na auditoria.</span>
         </template>
       </article>
     </section>

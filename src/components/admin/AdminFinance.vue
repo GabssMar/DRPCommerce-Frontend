@@ -16,6 +16,7 @@ import StatusBadge from '../ui/StatusBadge.vue';
 // E6 · Financeiro. Rotas: GET drop-transactions/get-all + transactions/get-all,
 // PUT …/update (capturar: statusId 3 · cancelar: statusId 5), reembolso (transação typeId 2),
 // GET invoices/get-all · POST invoices/add · PUT invoices/update (cancelar: statusId 4).
+// Transações do drop só são lidas: o CRUD de drop-transactions responde 403 DropPurchase.UseWorkflow.
 const props = defineProps({ params: { type: Object, default: () => ({}) } });
 
 const tab = computed(() => (props.params.tab === 'notas' ? 'notas' : 'transacoes'));
@@ -351,7 +352,7 @@ const emitNote = useAction(async () => {
                   </td>
                   <td>
                     <button
-                      v-if="t.typeId === 1 && t.statusId === 2"
+                      v-if="t.source === 'store' && t.typeId === 1 && t.statusId === 2"
                       type="button"
                       class="ds-btn ds-btn--secondary ds-btn--sm"
                       :disabled="capture.isPending.value"
@@ -360,7 +361,7 @@ const emitNote = useAction(async () => {
                       Capturar
                     </button>
                     <button
-                      v-else-if="t.typeId === 1 && t.statusId === 1"
+                      v-else-if="t.source === 'store' && t.typeId === 1 && t.statusId === 1"
                       type="button"
                       class="ds-btn ds-btn--ghost ds-btn--sm"
                       :disabled="cancel.isPending.value"
@@ -369,7 +370,7 @@ const emitNote = useAction(async () => {
                       Cancelar
                     </button>
                     <button
-                      v-else-if="t.typeId === 1 && t.statusId === 3"
+                      v-else-if="t.source === 'store' && t.typeId === 1 && t.statusId === 3"
                       type="button"
                       class="ds-btn ds-btn--ghost ds-btn--sm"
                       @click="refunding = t"

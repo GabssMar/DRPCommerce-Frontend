@@ -159,8 +159,19 @@ function storeStorefront(method, path, body, who) {
     });
     return raw(customerResponse(me));
   }
+  // Exclusão: mesmos impedimentos que o back confere (pedido aguardando pagamento ou em atendimento).
+  const deletionBlockers = () => {
+    const open = d['store/orders'].filter((o) => o.customerId === me.id && !o.isDeleted && o.orderStatusId <= 4).length;
+    return open ? [{ code: 'Account.OrdersInProgress', message: 'Você tem pedidos ainda em andamento.', count: open }] : [];
+  };
+  if (path === 'me/deletion' && method === 'GET') {
+    const blockers = deletionBlockers();
+    return raw({ canDelete: blockers.length === 0, blockers });
+  }
   if (path === 'me' && method === 'DELETE') {
-    me.isActive = false;
+    if (!body?.currentPassword) return problem(400, 'Validation.CurrentPassword', 'Informe a senha atual.');
+    if (deletionBlockers().length) return problem(409, 'Account.DeletionBlocked', 'Há pendências que impedem a exclusão da conta.');
+    Object.assign(me, { isActive: false, isDeleted: true, deletedAt: nowIso() });
     return noContent();
   }
   if (path === 'orders' && method === 'GET') {
@@ -306,6 +317,29 @@ function storeBackoffice(method, path, body, who) {
   return null;
 }
 
+// Drop: a compra só anda pelo fluxo (POST drop-purchases/{id}/fulfillment). O CRUD
+// das entidades de compra responde 403, como o guard do DropCommerceDbContext.
+const DROP_PURCHASE_CRUD = new Set([
+  'drop/queue-entries', 'drop/queue-sessions', 'drop/drop-reservations', 'drop/drop-orders', 'drop/drop-order-items', 'drop/drop-transactions',
+]);
+const CRUD_WRITES = new Set(['add', 'add-range', 'update', 'update-range', 'delete', 'delete-range']);
+
+function dropBackoffice(method, path, body, who) {
+  if (!who || who.realm !== 'backoffice') return null;
+  const fulfillment = path.match(/^drop-purchases\/(\d+)\/fulfillment$/);
+  if (fulfillment && method === 'POST') {
+    const o = data()['drop/drop-orders'].find((x) => x.id === Number(fulfillment[1]) && !x.isDeleted);
+    if (!o) return problem(404, 'DropPurchase.OrderNotFound', 'Pedido não encontrado.');
+    const statusId = Number(body?.statusId);
+    if (o.dropOrderPaymentStatusId !== 2 || o.financialReviewCode || statusId < o.dropOrderStatusId || statusId < 3 || statusId > 5) {
+      return problem(409, 'DropPurchase.InvalidTransition', 'Transição de entrega inválida.');
+    }
+    Object.assign(o, { dropOrderStatusId: statusId, updatedAt: nowIso() });
+    return noContent();
+  }
+  return null;
+}
+
 // ------------------------------------------------------------------ ROTEADOR ---
 
 /**
@@ -333,12 +367,19 @@ export function mockFetch(method, url, body, headers) {
     const special = storeBackoffice(method, rest, body, who);
     if (special) return special;
   }
+  if (service === 'drop') {
+    const special = dropBackoffice(method, rest, body, who);
+    if (special) return special;
+  }
 
   // CRUD: /api/<svc>/<resource>/<action>[/<id>]
   const crudMatch = rest.match(/^([a-z-]+)\/([a-z-]+)(?:\/(\d+))?$/);
   if (crudMatch) {
     if (!who) return problem(401, 'Security.Unauthenticated', 'Autenticação necessária.');
     const [, resource, action, param] = crudMatch;
+    if (DROP_PURCHASE_CRUD.has(`${service}/${resource}`) && CRUD_WRITES.has(action)) {
+      return problem(403, 'DropPurchase.UseWorkflow', 'Use a fila e as reservas controladas; o CRUD não confirma compras.');
+    }
     const result = crud(`${service}/${resource}`, action, param, body);
     if (result) return result;
   }

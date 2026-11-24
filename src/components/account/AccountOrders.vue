@@ -91,7 +91,7 @@ const copyTracking = async () => {
   }
 };
 
-const canCancel = computed(() => selected.value && [1, 2].includes(selected.value.statusId) && selected.value.paymentStatusId !== 2);
+const canCancel = computed(() => selected.value?.source === 'store' && [1, 2].includes(selected.value.statusId) && selected.value.paymentStatusId !== 2);
 const cancel = useAction(async () => {
   await cancelOrder(selected.value.source, order.value);
   await list.reload();
