@@ -65,6 +65,20 @@ export const logoutCustomer = async () => {
   }
 };
 
+// Exclusão da conta nesta loja: DELETE storefront/me com a senha atual no corpo
+// e X-CSRF-TOKEN, como no login. A senha vai em texto pelo HTTPS: o back confere
+// com o PasswordHasher dele, então um hash feito no navegador nunca bateria.
+// Sucesso (204) apaga o cookie de refresh e invalida as sessões no back.
+export const deleteCustomerAccount = async (currentPassword) => {
+  await request('DELETE', `${STORE_BASE}/storefront/me`, {
+    realm: REALMS.storefront,
+    body: { currentPassword },
+    headers: await csrfHeaders(REALMS.storefront),
+    retry: false,
+  });
+  clearSession(REALMS.storefront);
+};
+
 // ----------------------------------------------------------------- equipe ---
 
 export const loginEmployee = async ({ email, password }) => {

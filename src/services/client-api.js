@@ -38,7 +38,9 @@ const invoices = crud('store/invoices', { realm });
 
 export const getMe = () => request('GET', sf.store('me'), opts());
 export const updateMe = (profile) => request('PUT', sf.store('me'), opts(profile));
-export const deactivateMe = () => request('DELETE', sf.store('me'), opts());
+// Prévia da exclusão: { canDelete, blockers: [{ code, message, count }] }. É só
+// informativa: o DELETE (auth.js, deleteCustomerAccount) confere tudo de novo.
+export const getDeletionEligibility = () => request('GET', sf.store('me/deletion'), opts());
 
 // CPF do cliente: Document com referenceType "Customer" (CRUD).
 export const getMyDocuments = async (customerId) =>
@@ -208,8 +210,12 @@ export const getOrderDetail = async (source, id) => {
   };
 };
 
-export const cancelOrder = (source, order) =>
-  (source === 'drop' ? dropOrders : storeOrders).patch(order, source === 'drop' ? { dropOrderStatusId: 6 } : { orderStatusId: 6 });
+// Drop: o back não tem rota de cancelamento da compra e o CRUD de drop-orders
+// responde 403 DropPurchase.UseWorkflow; a reserva expira sozinha se não for paga.
+export const cancelOrder = (source, order) => {
+  if (source === 'drop') throw new Error('Compras de drop não podem ser canceladas por aqui.');
+  return storeOrders.patch(order, { orderStatusId: 6 });
+};
 
 // ---------------------------------------------------------- NOTIFICAÇÕES ---
 

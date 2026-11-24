@@ -2,7 +2,9 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { AlertCircle, Download, X } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
-import { admin, issueInvoice, refundOrder, saveShipment, setOrderStatus } from '../../services/admin-api';
+import {
+  admin, dropNextStatuses, issueInvoice, refundOrder, saveShipment, setOrderStatus,
+} from '../../services/admin-api';
 import { normalizeOrders } from '../../services/sales';
 import { INVOICE_STATUS, ORDER_STATUS, PAYMENT_STATUS, SHIPMENT_TYPE, options, ufOf } from '../../services/status';
 import { brl, dropOrderCode, formatDateTime, initials, localDayKey, shortName, storeOrderCode } from '../../services/format';
@@ -13,7 +15,7 @@ import StatusBadge from '../ui/StatusBadge.vue';
 
 // E5 · Pedidos (drop + vitrine). Rotas: GET drop-orders/get-all + orders/get-all,
 // PUT …/update (status, objeto inteiro), POST/PUT shipments (envio), POST invoices/add (NF),
-// POST drop-transactions/add | transactions/add (reembolso, typeId 2),
+// POST transactions/add (reembolso da vitrine, typeId 2), drop: POST drop-purchases/{id}/fulfillment,
 // POST customers/get-list-by-list-id, POST drop-notifications/add (aviso ao cliente do drop).
 defineProps({ params: { type: Object, default: () => ({}) } });
 
@@ -80,7 +82,8 @@ const bulkProcessing = useAction(async () => {
   const pick = (src) => selectedOrders.value.filter((o) => o.source === src).map((o) => o.raw);
   const drop = pick('drop');
   const store = pick('store');
-  if (drop.length) await admin.dropOrders.patchRange(drop, { dropOrderStatusId: 3 });
+  // Drop: só compras pagas que ainda não chegaram em "Em processamento", uma por vez.
+  for (const order of drop.filter((o) => dropNextStatuses(o).includes(3))) await setOrderStatus('drop', order, 3);
   if (store.length) await admin.orders.patchRange(store, { orderStatusId: 3 });
   selected.value = new Set();
   await data.reload();
@@ -92,6 +95,16 @@ const open = computed(() => rows.value.find((o) => keyOf(o) === openKey.value) ?
 const shipment = computed(() => (open.value?.source === 'store' ? data.data.value.shipments.find((s) => s.orderId === open.value.id) ?? null : null));
 const invoice = computed(() => (open.value?.source === 'store' ? data.data.value.invoices.find((i) => i.orderId === open.value.id && i.invoiceStatusId !== 4) ?? null : null));
 const ordersOfCustomer = computed(() => (data.data.value?.orders ?? []).filter((o) => o.customerId === open.value?.customerId).length);
+
+// Drop: só o status atual e os passos que o back aceita (fulfillment 3/4/5 após o pagamento).
+const statusOptions = computed(() => {
+  const o = open.value;
+  if (!o) return [];
+  if (o.source !== 'drop') return options(ORDER_STATUS);
+  const allowed = new Set([o.statusId, ...dropNextStatuses(o.raw)]);
+  return options(ORDER_STATUS).filter((s) => allowed.has(s.id));
+});
+const dropLocked = computed(() => open.value?.source === 'drop' && dropNextStatuses(open.value.raw).length === 0);
 
 const edit = reactive({ statusId: 1, carrierName: 'Correios', shipmentTypeId: 1, trackingCode: '' });
 watch(open, (o) => {
@@ -140,7 +153,8 @@ const refund = useAction(async () => {
   showRefund.value = false;
   await data.reload();
 });
-const canRefund = computed(() => open.value && open.value.paymentStatusId === 2 && open.value.statusId !== 7);
+// Drop: sem rota de estorno no back.
+const canRefund = computed(() => open.value?.source === 'store' && open.value.paymentStatusId === 2 && open.value.statusId !== 7);
 
 // CSV do filtro atual
 const exportCsv = () => {
@@ -433,9 +447,10 @@ const exportCsv = () => {
             id="o-status"
             v-model.number="edit.statusId"
             class="ds-input"
+            :disabled="dropLocked"
           >
             <option
-              v-for="s in options(ORDER_STATUS)"
+              v-for="s in statusOptions"
               :key="s.id"
               :value="s.id"
             >
@@ -509,7 +524,7 @@ const exportCsv = () => {
           class="ds-hint"
         >
           {{ open.raw.shippingAddressLine }} · {{ open.raw.shippingCity }}, {{ ufOf(Number(open.raw.shippingState)) || open.raw.shippingState }} · {{ open.raw.shippingZipCode }}.
-          Pedido de drop ainda não tem envio nem nota no back-end.
+          Compras de drop avançam depois do pagamento confirmado e ainda não têm envio, nota, cancelamento nem estorno no back-end.
         </p>
 
         <dl class="ds-dl ds-text-sm">

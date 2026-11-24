@@ -4,8 +4,8 @@ import { AlertCircle, FileText, LogOut } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
 import { navigate } from '../../router';
 import { authNotice, isSignedIn, REALMS } from '../../services/session';
-import { changeCustomerPassword, logoutCustomer } from '../../services/auth';
-import { deactivateMe, getMe, getMyDocuments, sendDocument, updateMe } from '../../services/client-api';
+import { changeCustomerPassword, deleteCustomerAccount, logoutCustomer } from '../../services/auth';
+import { getDeletionEligibility, getMe, getMyDocuments, sendDocument, updateMe } from '../../services/client-api';
 import { DOCUMENT_STATUS, STATES } from '../../services/status';
 import { formatDate, formatDateYear, fromCalendarInput, toCalendarInput } from '../../services/format';
 import AccountNav from './AccountNav.vue';
@@ -14,7 +14,8 @@ import ModalDialog from '../ui/ModalDialog.vue';
 import StatusBadge from '../ui/StatusBadge.vue';
 
 // C11 · Cadastro e meus dados. Rotas (back-end atual):
-//   GET/PUT/DELETE storefront/me · POST storefront/auth/change-password | logout
+//   GET/PUT storefront/me · POST storefront/auth/change-password | logout
+//   GET storefront/me/deletion + DELETE storefront/me { currentPassword } (com CSRF)
 //   (entrar e criar conta ficam em CustomerAuth.vue)
 //   GET documents/get-all + POST documents/add (CPF, referenceType "Customer")
 const signedIn = computed(() => isSignedIn(REALMS.storefront));
@@ -94,11 +95,31 @@ const sendCpf = useAction(async () => {
   await page.reload();
 });
 
-// Excluir conta
+// Excluir conta: primeiro a prévia dos impedimentos, depois a senha atual.
 const showDeleteModal = ref(false);
+const deletePassword = ref('');
+const eligibility = useAsync(getDeletionEligibility, { immediate: false });
+const blockers = computed(() => eligibility.data.value?.blockers ?? []);
+const canDelete = computed(() => eligibility.data.value?.canDelete === true);
+
+const openDeleteModal = () => {
+  deletePassword.value = '';
+  showDeleteModal.value = true;
+  eligibility.reload();
+};
+
 const removeAccount = useAction(async () => {
-  await deactivateMe();
-  await logoutCustomer().catch(() => {});
+  try {
+    await deleteCustomerAccount(deletePassword.value);
+  } catch (err) {
+    // 401 aqui é senha errada (a sessão em si foi aceita pela prévia).
+    if (err.kind === 'auth') err.message = 'Senha incorreta.';
+    // 409: surgiu um impedimento entre a prévia e o pedido; mostra a lista atual.
+    if (err.kind === 'conflict') eligibility.reload();
+    throw err;
+  } finally {
+    deletePassword.value = '';
+  }
   showDeleteModal.value = false;
   navigate('/');
 });
@@ -330,7 +351,7 @@ const removeAccount = useAction(async () => {
               <button
                 type="button"
                 class="ds-btn ds-btn--ghost-danger"
-                @click="showDeleteModal = true"
+                @click="openDeleteModal"
               >
                 Excluir minha conta
               </button>
@@ -534,17 +555,84 @@ const removeAccount = useAction(async () => {
       title="Excluir minha conta"
       @close="showDeleteModal = false"
     >
-      <p class="ds-text-sm">
-        Sua conta é desativada nesta loja: você sai das filas e listas de espera e não consegue mais entrar com este e-mail.
-        Pedidos já feitos continuam sendo entregues.
-      </p>
-      <p
-        v-if="removeAccount.error.value"
-        class="ds-error"
-        role="alert"
-      >
-        {{ removeAccount.error.value.message }}
-      </p>
+      <div class="ds-stack--4">
+        <p class="ds-text-sm">
+          Seus dados pessoais são apagados nesta loja: telefone, endereços, carrinho e documentos. Suas sessões são
+          encerradas e este e-mail deixa de entrar aqui. Pedidos, pagamentos e notas continuam registrados, com o nome e
+          o contato usados na compra, porque a loja precisa deles para entrega, garantia e obrigações fiscais.
+        </p>
+        <LoadState
+          :is-loading="eligibility.isLoading.value"
+          :error="eligibility.error.value"
+          :lines="2"
+          @retry="eligibility.reload"
+        >
+          <div
+            v-if="!canDelete"
+            class="ds-card ds-card--sunken ds-stack--2"
+            role="status"
+          >
+            <span class="ds-label-caps">Ainda não dá para excluir</span>
+            <ul class="ds-list">
+              <li
+                v-for="b in blockers"
+                :key="b.code"
+                class="ds-list__item ds-text-sm"
+              >
+                {{ b.message }}<template v-if="b.count > 1">
+                  ({{ b.count }})
+                </template>
+              </li>
+            </ul>
+            <span class="ds-hint">Conclua ou cancele esses itens e tente de novo. Se precisar de ajuda, fale com a loja.</span>
+          </div>
+          <form
+            v-else
+            id="delete-account-form"
+            class="ds-stack--3"
+            @submit.prevent="removeAccount.run()"
+          >
+            <!-- Usuário oculto: o gerenciador de senhas sabe de qual conta é a senha. -->
+            <input
+              class="ds-sr-only"
+              type="email"
+              autocomplete="username"
+              :value="form.email"
+              tabindex="-1"
+              aria-hidden="true"
+              readonly
+            >
+            <div class="ds-field">
+              <label
+                class="ds-label"
+                for="del-pass"
+              >Confirme com sua senha atual</label>
+              <input
+                id="del-pass"
+                v-model="deletePassword"
+                class="ds-input"
+                type="password"
+                autocomplete="current-password"
+                maxlength="128"
+                required
+                autofocus
+              >
+            </div>
+          </form>
+        </LoadState>
+        <p
+          v-if="removeAccount.error.value"
+          class="ds-error"
+          role="alert"
+        >
+          <AlertCircle
+            :size="16"
+            :stroke-width="1.5"
+            aria-hidden="true"
+          />
+          {{ removeAccount.error.value.message }}
+        </p>
+      </div>
       <template #footer>
         <button
           type="button"
@@ -554,10 +642,11 @@ const removeAccount = useAction(async () => {
           Manter conta
         </button>
         <button
-          type="button"
+          type="submit"
+          form="delete-account-form"
           class="ds-btn ds-btn--danger"
-          :disabled="removeAccount.isPending.value"
-          @click="removeAccount.run()"
+          :disabled="!canDelete || !deletePassword || removeAccount.isPending.value"
+          :aria-busy="removeAccount.isPending.value"
         >
           Excluir conta
         </button>

@@ -1,4 +1,4 @@
-import { STORE_BASE } from './config';
+import { DROP_BASE, STORE_BASE } from './config';
 import { request } from './http';
 import { crud } from './resources';
 import { getAccessToken, REALMS } from './session';
@@ -81,16 +81,8 @@ export const listEventVariants = async (eventId) =>
 export const listEventCoupons = async (eventId) =>
   (await admin.dropCoupons.getAll()).filter((c) => c.dropEventId === eventId && !c.isDeleted);
 
-// Chamar um lote da fila: os N primeiros "Aguardando" viram "Chamado".
-export const callQueueBatch = (entries, size) => {
-  const batch = entries
-    .filter((e) => e.queueEntryStatusId === 1)
-    .sort((a, b) => a.position - b.position)
-    .slice(0, size);
-  return batch.length ? admin.queueEntries.patchRange(batch, { queueEntryStatusId: 2, calledAt: new Date().toISOString() }) : Promise.resolve([]);
-};
-
-export const removeQueueEntries = (entries) => admin.queueEntries.patchRange(entries, { queueEntryStatusId: 6 });
+// Fila: a admissão é automática no back (worker FIFO). O CRUD de queue-entries
+// e queue-sessions não grava (403 DropPurchase.UseWorkflow), então o painel só lê.
 
 // Inscrições: aprovar (2 Elegível) ou reprovar (3 Inelegível) em lote.
 export const decideRegistrations = (registrations, approve, reason = '') =>
@@ -128,9 +120,21 @@ export const scheduleNotifications = ({ eventId, customerIds, channelIds, typeId
 
 // ---------------------------------------------------------------- PEDIDOS ---
 
+// Compra do drop: o CRUD de drop-orders/drop-transactions responde 403
+// DropPurchase.UseWorkflow. Depois do pagamento confirmado e sem revisão financeira,
+// o pedido só avança para 3/4/5 por POST drop-purchases/{id}/fulfillment.
+// Não há rota de cancelamento nem de estorno de compra do drop.
+export const DROP_FULFILLMENT_STATUSES = [3, 4, 5];
+
+/** Status para os quais a compra do drop pode avançar agora (vazio se ainda não pode). */
+export const dropNextStatuses = (order) => {
+  if (order.dropOrderPaymentStatusId !== 2 || order.financialReviewCode) return [];
+  return DROP_FULFILLMENT_STATUSES.filter((s) => s > order.dropOrderStatusId);
+};
+
 export const setOrderStatus = (source, order, statusId) =>
   source === 'drop'
-    ? admin.dropOrders.patch(order, { dropOrderStatusId: statusId })
+    ? request('POST', `${DROP_BASE}/drop-purchases/${order.id}/fulfillment`, opts({ statusId }))
     : admin.orders.patch(order, { orderStatusId: statusId });
 
 // Reembolso: transação tipo 2 (Reembolso) + pedido 7 Reembolsado / pagamento 4.
@@ -146,13 +150,7 @@ export const refundOrder = async (source, order, payment) => {
     paidAt: null,
     refundedAt: now,
   };
-  if (source === 'drop') {
-    await admin.dropTransactions.add({
-      ...refund, dropOrderId: order.id, dropTransactionTypeId: 2,
-      dropTransactionMethodId: payment?.dropTransactionMethodId ?? 1, dropTransactionStatusId: 6,
-    });
-    return admin.dropOrders.patch(order, { dropOrderStatusId: 7, dropOrderPaymentStatusId: 4 });
-  }
+  if (source === 'drop') throw new Error('Compras de drop ainda não têm estorno no back-end.');
   await admin.transactions.add({
     ...refund, orderId: order.id, transactionTypeId: 2,
     transactionMethodId: payment?.transactionMethodId ?? 1, transactionStatusId: 6,

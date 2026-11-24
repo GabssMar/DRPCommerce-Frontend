@@ -1,10 +1,9 @@
 <script setup>
 import { computed, onScopeDispose, ref } from 'vue';
-import { AlertCircle, Megaphone } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
 import { useNow } from '../../composables/useNow';
 import { href, navigate } from '../../router';
-import { admin, callQueueBatch, listEventVariants, setDropStatus } from '../../services/admin-api';
+import { admin, listEventVariants, setDropStatus } from '../../services/admin-api';
 import { DROP_EVENT_STATUS, FRAUD_SEVERITY, FRAUD_SIGNAL_TYPE, labelOf } from '../../services/status';
 import { formatDuration, formatNumber, formatTime, formatTimeSec, percent, shortName } from '../../services/format';
 import LoadState from '../ui/LoadState.vue';
@@ -112,14 +111,6 @@ const feed = computed(() => [...(d.value?.logs ?? [])]
 
 const endsIn = computed(() => (event.value ? Date.parse(event.value.dropEndsAt) - now.value : 0));
 const updatedAgo = computed(() => (d.value ? Math.max(0, Math.round((now.value - d.value.loadedAt) / 1000)) : 0));
-
-// Chamar lote
-const batchSize = ref(20);
-const callBatch = useAction(async () => {
-  const result = await callQueueBatch(d.value.entries, Number(batchSize.value) || 1);
-  await data.reload();
-  return result;
-});
 
 // Encerrar
 const showEndModal = ref(false);
@@ -410,67 +401,21 @@ const selectEvent = (e) => navigate(`/admin/ao-vivo/${e.target.value}`);
         </div>
 
         <aside class="ds-stack--6">
-          <form
-            class="ds-card ds-stack--4"
-            @submit.prevent="callBatch.run()"
-          >
+          <article class="ds-card ds-stack--4">
             <header class="ds-card__header">
               <h2 class="ds-card__title">
-                Ritmo de chamada
+                Ritmo da fila
               </h2>
             </header>
-            <div class="ds-field">
-              <label
-                class="ds-label"
-                for="l-batch"
-              >Lote (pessoas)</label>
-              <input
-                id="l-batch"
-                v-model.number="batchSize"
-                class="ds-input"
-                type="number"
-                min="1"
-                max="500"
-              >
-            </div>
+            <p class="ds-text-sm">
+              {{ formatNumber(waiting.length) }} aguardando.
+            </p>
             <span class="ds-hint">
               {{ stock.free === 0
                 ? 'Com 0 unidades livres, a fila só avança quando uma reserva expira.'
-                : `${formatNumber(waiting.length)} aguardando. O intervalo automático ainda não tem campo no back-end: o lote é chamado agora.` }}
+                : 'A admissão é automática: o back chama por ordem de chegada, até o limite de compradores simultâneos do evento, e cada um tem 15 minutos para comprar.' }}
             </span>
-            <p
-              v-if="callBatch.error.value"
-              class="ds-error"
-              role="alert"
-            >
-              <AlertCircle
-                :size="16"
-                :stroke-width="1.5"
-                aria-hidden="true"
-              />
-              {{ callBatch.error.value.message }}
-            </p>
-            <p
-              v-else-if="callBatch.done.value"
-              class="ds-hint ds-text-success"
-              role="status"
-            >
-              Lote chamado.
-            </p>
-            <button
-              type="submit"
-              class="ds-btn ds-btn--secondary ds-btn--block"
-              :disabled="!waiting.length || callBatch.isPending.value"
-            >
-              <Megaphone
-                class="ds-btn__icon"
-                :size="16"
-                :stroke-width="1.5"
-                aria-hidden="true"
-              />
-              Chamar próximo lote
-            </button>
-          </form>
+          </article>
 
           <article class="ds-card ds-stack--4">
             <header class="ds-card__header">
