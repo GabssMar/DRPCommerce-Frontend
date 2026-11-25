@@ -17,13 +17,13 @@ figure.ds-chart (role="img", aria-label com o resumo)
 ├── .ds-chart__legend > .ds-chart__key > .ds-swatch(--2)
 ├── .ds-chart__plot
 │   ├── .ds-chart__axis            rótulos do eixo Y (do topo ao zero)
-│   └── div
+│   └── .ds-chart__canvas          position: relative (referência do tooltip)
 │       ├── svg.ds-chart-bars (aria-hidden)
 │       │   ├── line.ds-chart__gridline
 │       │   ├── rect.ds-chart-bars__bar(--2)
 │       │   └── rect.ds-chart-bars__hit   coluna de foco/hover
-│       └── .ds-chart__labels      rótulos do eixo X
-├── .ds-chart__tooltip (.ds-card--tight)
+│       ├── .ds-chart__labels      rótulos do eixo X
+│       └── .ds-chart__tooltip (.ds-card--tight)   só com hover/foco; ao lado da coluna ativa
 └── table.ds-sr-only               os mesmos valores, para leitor de tela
 ```
 
@@ -38,7 +38,7 @@ figure.ds-chart (role="img", aria-label com o resumo)
 
 ## Interação
 
-Cada dia tem um `rect.ds-chart-bars__hit` focável (`tabindex="0"`); foco ou hover abre o tooltip com os valores daquele dia. O último dia começa selecionado.
+Cada dia tem um `rect.ds-chart-bars__hit` focável (`tabindex="0"`); foco ou hover abre o tooltip com os valores daquele dia. Sem hover nem foco, o tooltip fica fechado: ele some ao tirar o mouse do gráfico, ao sair do foco ou com Esc. Ele abre ao lado da coluna ativa (`left`/`right` em % calculados no componente), virado para dentro do gráfico na metade direita.
 
 ## Variantes
 

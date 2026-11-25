@@ -48,9 +48,22 @@ const bars = computed(() => props.buckets.map((b, i) => {
 const every = computed(() => Math.ceil(props.buckets.length / 14));
 const labels = computed(() => props.buckets.map((b, i) => (i % every.value === 0 || i === props.buckets.length - 1 ? b.date.slice(8) : '')));
 
-const active = ref(props.buckets.length - 1);
-watch(() => props.buckets.length, (n) => { active.value = n - 1; });
-const activeBucket = computed(() => props.buckets[active.value] ?? null);
+// Dia sob o mouse ou com foco do teclado. Sem nenhum, o tooltip fica fechado.
+const active = ref(null);
+watch(() => props.buckets.length, () => { active.value = null; });
+const activeBucket = computed(() => (active.value === null ? null : props.buckets[active.value] ?? null));
+// Tooltip ao lado da coluna ativa: na metade direita abre para a esquerda, para não sair do gráfico.
+const tooltipStyle = computed(() => {
+  if (active.value === null) return {};
+  const center = ((active.value + 0.5) / props.buckets.length) * 100;
+  const offset = (100 / props.buckets.length) / 2 + 1;
+  return center > 50
+    ? { left: 'auto', right: `${100 - center + offset}%` }
+    : { left: `${center + offset}%`, right: 'auto' };
+});
+const release = (i) => {
+  if (active.value === i) active.value = null;
+};
 
 const summary = computed(() => {
   const total = totals.value.reduce((s, v) => s + v, 0);
@@ -76,12 +89,13 @@ const summary = computed(() => {
           :key="tick"
         >{{ shortMoney(tick) }}</span>
       </div>
-      <div class="ds-min-0">
+      <div class="ds-chart__canvas">
         <svg
           class="ds-chart-bars"
           :viewBox="`0 0 ${buckets.length * COLUMN} ${HEIGHT}`"
           preserveAspectRatio="none"
           aria-hidden="true"
+          @mouseleave="active = null"
         >
           <line
             v-for="tick in ticks.slice(0, 3)"
@@ -112,6 +126,8 @@ const summary = computed(() => {
               tabindex="0"
               @mouseenter="active = i"
               @focus="active = i"
+              @blur="release(i)"
+              @keydown.esc="active = null"
             />
             <rect
               class="ds-chart-bars__bar"
@@ -139,25 +155,26 @@ const summary = computed(() => {
             :key="buckets[i].date"
           >{{ label }}</span>
         </div>
+        <div
+          v-if="activeBucket"
+          :style="tooltipStyle"
+          class="ds-chart__tooltip ds-card ds-card--tight ds-stack--1"
+          aria-hidden="true"
+        >
+          <span class="ds-text-xs ds-text-secondary">{{ formatWeekday(asDate(activeBucket.date)) }}, {{ formatDate(asDate(activeBucket.date)) }}</span>
+          <span
+            v-if="showStore"
+            class="ds-cluster ds-cluster--between ds-text-sm"
+          ><span>Vitrine</span><strong class="ds-text-medium">{{ brl(activeBucket.store) }}</strong></span>
+          <span
+            v-if="showDrop"
+            class="ds-cluster ds-cluster--between ds-text-sm"
+          ><span>Drop</span><strong class="ds-text-medium">{{ brl(activeBucket.drop) }}</strong></span>
+          <span class="ds-text-xs ds-text-secondary">{{ activeBucket.orderCount }} {{ activeBucket.orderCount === 1 ? 'pedido' : 'pedidos' }}</span>
+        </div>
       </div>
     </div>
 
-    <div
-      v-if="activeBucket"
-      class="ds-chart__tooltip ds-card ds-card--tight ds-stack--1"
-      aria-hidden="true"
-    >
-      <span class="ds-text-xs ds-text-secondary">{{ formatWeekday(asDate(activeBucket.date)) }}, {{ formatDate(asDate(activeBucket.date)) }}</span>
-      <span
-        v-if="showStore"
-        class="ds-cluster ds-cluster--between ds-text-sm"
-      ><span>Vitrine</span><strong class="ds-text-medium">{{ brl(activeBucket.store) }}</strong></span>
-      <span
-        v-if="showDrop"
-        class="ds-cluster ds-cluster--between ds-text-sm"
-      ><span>Drop</span><strong class="ds-text-medium">{{ brl(activeBucket.drop) }}</strong></span>
-      <span class="ds-text-xs ds-text-secondary">{{ activeBucket.orderCount }} {{ activeBucket.orderCount === 1 ? 'pedido' : 'pedidos' }}</span>
-    </div>
 
     <table class="ds-sr-only">
       <caption>Faturamento por dia</caption>

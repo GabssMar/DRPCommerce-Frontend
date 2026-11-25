@@ -92,6 +92,13 @@ export const loginEmployee = async ({ email, password }) => {
   return result;
 };
 
+// Conta nova de lojista (POST auth/register) e login em seguida. Sem loja ainda:
+// o token é de usuário global, que pode criar a loja em enterprises/register.
+export const registerEmployee = async ({ fullName, email, password }) => {
+  await authPost(REALMS.backoffice, 'register', { fullName, email, password });
+  return loginEmployee({ email, password });
+};
+
 export const selectEnterprise = async (membershipId) =>
   startSession(REALMS.backoffice, await authPost(REALMS.backoffice, 'select-enterprise', { membershipId }));
 
