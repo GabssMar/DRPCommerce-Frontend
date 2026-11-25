@@ -72,6 +72,8 @@
 .ds-cluster--2 { gap: var(--ds-space-2); }
 .ds-cluster--between { justify-content: space-between; }
 .ds-cluster--end { justify-content: flex-end; }
+/* Ícone + texto que quebra linha: o texto quebra dentro do item, sem descolar do ícone. */
+.ds-cluster--nowrap { flex-wrap: nowrap; }
 
 .ds-grid { display: grid; gap: var(--ds-space-6); }
 .ds-grid--2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }

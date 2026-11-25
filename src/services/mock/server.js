@@ -1,5 +1,6 @@
 import { createSeed, SIGNED_IN_CUSTOMER_ID, SIGNED_IN_EMPLOYEE_ID } from './seed';
 import { toEntity } from '../resources';
+import { createPlansMock } from './plans';
 
 // Servidor falso que responde nas MESMAS rotas do Gateway (/api/store/api/...,
 // /api/drop/api/...), com os mesmos formatos:
@@ -16,6 +17,7 @@ const data = () => {
 
 export const resetMockData = () => {
   db = null;
+  plans.forget();
 };
 
 const ok = (content) => ({ status: 200, data: { isSuccess: true, isFailure: false, content, errors: [], listMessageErrors: [] } });
@@ -27,6 +29,8 @@ const problem = (status, code, title) => ({
 });
 
 const nowIso = () => new Date().toISOString();
+
+const plans = createPlansMock({ data: () => data(), raw: (body, status) => raw(body, status), problem: (...a) => problem(...a), nowIso });
 
 // Identidade a partir do token "mock-storefront-customer-12" / "mock-backoffice-employee-1".
 const identity = (headers) => {
@@ -275,14 +279,51 @@ function storeBackoffice(method, path, body, who) {
     return body?.password ? raw({ ...session('backoffice', SIGNED_IN_EMPLOYEE_ID), requiresEnterpriseSelection: false })
       : problem(401, 'Identity.InvalidCredentials', 'E-mail ou senha inválidos.');
   }
-  if (path === 'auth/refresh') return problem(401, 'Identity.RefreshRequired', 'Sessão de renovação ausente.');
+  // Com token da equipe, renova (o front renova depois que o plano é concedido).
+  if (path === 'auth/refresh') {
+    return who?.realm === 'backoffice' ? raw(session('backoffice', who.id)) : problem(401, 'Identity.RefreshRequired', 'Sessão de renovação ausente.');
+  }
   if (path === 'auth/logout') return noContent();
+  if (path === 'auth/register' && method === 'POST') {
+    if (!body?.fullName || !body?.email || String(body?.password ?? '').length < 8) {
+      return problem(400, 'Identity.InvalidRegistration', 'Informe nome, e-mail e uma senha de ao menos 8 caracteres.');
+    }
+    // Conta nova ainda sem loja: enterprises/mine fica vazio até enterprises/register.
+    d.newOwnerWithoutStore = true;
+    return raw({ id: 99, fullName: body.fullName, email: body.email });
+  }
+  if (path === 'enterprise-plans' && method === 'GET') return raw(plans.catalog());
 
   if (!who || who.realm !== 'backoffice') return null;
 
+  if (path === 'auth/select-enterprise' && method === 'POST') return raw(session('backoffice', who.id));
   if (path === 'enterprises/mine' && method === 'GET') {
-    return raw([{ membershipId: 1, enterpriseId: d.enterprise.id, tradeName: d.enterprise.tradeName, kindId: 1 }]);
+    if (d.newOwnerWithoutStore) return raw([]);
+    return raw([{
+      membershipId: 1, enterpriseId: d.enterprise.id, tradeName: d.enterprise.tradeName, kindId: 1,
+      planId: plans.state().planId, contractRevision: plans.state().revision,
+    }]);
   }
+  if (path === 'enterprises/register' && method === 'POST') {
+    const slug = String(body?.slug ?? '').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(slug) || ['www', 'api', 'admin', 'backoffice'].includes(slug)) {
+      return problem(400, 'Enterprise.InvalidSlug', 'Identificador público da loja inválido ou reservado.');
+    }
+    if (slug === 'veloce-labs') return problem(409, 'Enterprise.SlugUnavailable', 'Este endereço público já está em uso.');
+    // O mock tem uma loja só: o cadastro passa a descrever a loja de exemplo, no Gratuito.
+    Object.assign(d.enterprise, {
+      tradeName: body.tradeName, legalName: body.legalName, email: body.email, phone: body.phone, addressLine: body.addressLine,
+      city: body.city, stateId: body.stateId, zipCode: body.zipCode, country: body.country, slug,
+    });
+    plans.reset();
+    d.newOwnerWithoutStore = false;
+    return raw({
+      id: d.enterprise.id, tradeName: d.enterprise.tradeName, isActive: true, planId: 1, contractRevision: 1,
+      storefrontSlug: slug, storefrontUrl: `https://drpcommerce.example/${slug}`,
+    });
+  }
+  const planRoute = plans.route(method, path, body);
+  if (planRoute) return planRoute;
   if (path === 'enterprises/current' && method === 'PUT') {
     Object.assign(d.enterprise, body);
     return raw({ id: d.enterprise.id, tradeName: d.enterprise.tradeName, isActive: d.enterprise.isActive });

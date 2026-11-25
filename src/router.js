@@ -37,6 +37,10 @@ const ROUTES = [
   ['admin-suppliers', '/admin/catalogo/fornecedores'],
   ['admin-customers', '/admin/clientes'],
   ['admin-fraud', '/admin/fraude'],
+  ['admin-plan', '/admin/plano'],
+  ['admin-plan', '/admin/plano/:planId'],
+  // Cadastro de lojista a partir da landing page (sem sessão).
+  ['admin-signup', '/admin/assinar/:planId'],
   ['admin-settings', '/admin/configuracoes'],
   ['admin-settings', '/admin/configuracoes/:tab'],
 ].map(([name, pattern]) => ({ name, pattern, parts: pattern.split('/').filter(Boolean) }));

@@ -2,6 +2,11 @@
 import { Timer, ShoppingBag, LayoutDashboard, UserRound, Store, ArrowRight } from '@lucide/vue';
 import { ADMIN_ENABLED } from '../services/config';
 import { href } from '../router';
+import { useAsync } from '../composables/useAsync';
+import { addOnLabel, getPlanCatalog } from '../services/plans-api';
+import { brl } from '../services/format';
+import LoadState from './ui/LoadState.vue';
+import PlanCards from './plans/PlanCards.vue';
 
 // Página de visitas: primeira tela de quem não está logado. Apresenta o
 // DRP Commerce e leva ao login do cliente, ao cadastro ou ao painel do lojista.
@@ -25,6 +30,11 @@ const FEATURES = [
     text: 'Vendas do dia e do mês, drops, produtos, estoque, cupons, pedidos, clientes e equipe em um só lugar.',
   },
 ];
+
+// Planos da plataforma (público): quem ainda não usa o DRP Commerce escolhe aqui
+// e segue para o cadastro do lojista (#/admin/assinar/:planId).
+const catalog = useAsync(getPlanCatalog);
+const scrollToPlans = () => document.getElementById('landing-plans')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
 const DROP_STEPS = [
   { title: 'Inscrição', text: 'O cliente garante a vaga antes da abertura. Drops com inscrição prévia pedem CPF validado.' },
@@ -59,6 +69,13 @@ const DROP_STEPS = [
           >
             Entrar
           </a>
+          <button
+            type="button"
+            class="ds-btn ds-btn--ghost ds-btn--lg"
+            @click="scrollToPlans"
+          >
+            Quero vender aqui
+          </button>
         </div>
       </div>
 
@@ -78,6 +95,53 @@ const DROP_STEPS = [
           </li>
         </ol>
       </article>
+    </section>
+
+    <section
+      class="ds-stack--5"
+      aria-labelledby="landing-plans"
+    >
+      <div class="ds-stack--1">
+        <h2
+          id="landing-plans"
+          class="ds-title"
+        >
+          Planos para a sua loja
+        </h2>
+        <p class="ds-text-secondary">
+          Comece no Gratuito ou assine um plano mensal. A cobrança é feita pelo Mercado Pago e você troca de plano quando quiser.
+        </p>
+      </div>
+      <LoadState
+        :is-loading="catalog.isLoading.value"
+        :error="catalog.error.value"
+        :is-empty="!catalog.data.value?.plans?.length"
+        empty-text="Os planos ainda não estão disponíveis. Volte em instantes."
+        :lines="6"
+        @retry="catalog.reload"
+      >
+        <PlanCards
+          :plans="catalog.data.value.plans"
+          :show-actions="ADMIN_ENABLED"
+          layout="carousel"
+        />
+        <div
+          v-if="catalog.data.value.addOns?.length"
+          class="ds-card ds-card--sunken ds-stack--3"
+        >
+          <span class="ds-label-caps">Adicionais (um por loja)</span>
+          <ul class="ds-list-reset ds-grid ds-grid--3">
+            <li
+              v-for="addOn in catalog.data.value.addOns"
+              :key="addOn.id"
+              class="ds-cluster ds-cluster--between ds-text-sm"
+            >
+              <span>{{ addOnLabel(addOn) }}</span>
+              <span class="ds-numeric ds-text-secondary">{{ brl(addOn.monthlyPrice) }}/mês</span>
+            </li>
+          </ul>
+        </div>
+      </LoadState>
     </section>
 
     <section

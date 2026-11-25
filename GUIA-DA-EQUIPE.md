@@ -115,6 +115,7 @@ frontend/
 | Painel usando a loja da sessão no lugar de um `enterpriseId` fixo | — | PR #28 |
 | Login obrigatório na loja, página de apresentação para visitantes e página inicial por sessão (cliente vai aos drops, lojista ao dashboard; F5 restaura as duas sessões) | — | PR #30 |
 | Testes do front contra o back local e lista de pendências para o back | — | `TESTES-BACKEND-LOCAL-*.md`, `PENDENCIAS-BACKEND-*.md`, `../test-dashboard` |
+| Planos e assinatura: planos na landing page, cadastro do lojista com o plano escolhido (`#/admin/assinar/:planId`: conta → loja → pagamento no Mercado Pago) e tela **Plano** no painel (`#/admin/plano`: situação, consumo, troca com prévia de impacto em produtos e equipe, faturas) | — | `services/plans-api.js`, `components/plans/`, `AdminPlan.vue`, `mock/plans.js` |
 
 ---
 

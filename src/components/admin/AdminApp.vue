@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import {
-  LayoutDashboard, LogOut, Package, Radio, Receipt, Rocket, Settings, ShieldAlert, Users, Wallet,
+  BadgeDollarSign, LayoutDashboard, LogOut, Package, Radio, Receipt, Rocket, Settings, ShieldAlert, Users, Wallet,
 } from '@lucide/vue';
 import { focusMain, href, route } from '../../router';
 import { IS_MOCK } from '../../services/config';
@@ -24,6 +24,8 @@ import AdminSuppliers from './AdminSuppliers.vue';
 import AdminCustomers from './AdminCustomers.vue';
 import AdminFraud from './AdminFraud.vue';
 import AdminSettings from './AdminSettings.vue';
+import AdminPlan from './AdminPlan.vue';
+import PlanSignup from '../plans/PlanSignup.vue';
 
 // Shell do painel da loja (patterns/app-shell.md): rail com os módulos,
 // topbar com o ambiente e a pessoa logada, e a tela da rota.
@@ -36,6 +38,7 @@ const SECTIONS = [
   { label: 'Fraude', path: '/admin/fraude', icon: ShieldAlert, routes: ['admin-fraud'] },
   { label: 'Financeiro', path: '/admin/financeiro', icon: Wallet, routes: ['admin-finance'] },
   { label: 'Clientes', path: '/admin/clientes', icon: Users, routes: ['admin-customers'] },
+  { label: 'Plano', path: '/admin/plano', icon: BadgeDollarSign, routes: ['admin-plan'] },
   { label: 'Configurações', path: '/admin/configuracoes', icon: Settings, routes: ['admin-settings'] },
 ];
 
@@ -54,7 +57,10 @@ const PAGES = {
   'admin-customers': AdminCustomers,
   'admin-fraud': AdminFraud,
   'admin-settings': AdminSettings,
+  'admin-plan': AdminPlan,
 };
+// Cadastro de lojista vindo da landing page: abre com ou sem sessão.
+const isSignup = computed(() => route.value.name === 'admin-signup');
 
 const page = computed(() => {
   // /admin/drops/:id/editor é o próprio editor.
@@ -192,6 +198,12 @@ const logout = async () => {
             />
             Verificando sua sessão…
           </div>
+          <PlanSignup
+            v-else-if="isSignup"
+            :key="route.path"
+            :params="route.params"
+            @signed-in="onSignedIn"
+          />
           <AdminLogin
             v-else-if="!signedIn"
             @signed-in="onSignedIn"

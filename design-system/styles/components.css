@@ -909,16 +909,48 @@
 }
 .ds-swatch--2 { background: var(--ds-chart-2); }
 
+/* Área das barras: referência do tooltip, que abre ao lado da coluna ativa. */
+.ds-chart__canvas { position: relative; min-width: 0; }
+
 .ds-chart__tooltip {
   position: absolute;
-  top: var(--ds-space-10);
+  top: var(--ds-space-2);
   right: 0;
+  z-index: 1;
   min-width: 168px;
   box-shadow: var(--ds-shadow-lg);
   pointer-events: none;
 }
 
 .ds-chart__caption { font-size: var(--ds-text-xs); color: var(--ds-text-secondary); }
+
+/* ------------------------------------------------------------ CAROUSEL ---
+   Cartões numa linha que rola na horizontal (components/carousel.md).      */
+
+.ds-carousel { display: grid; gap: var(--ds-space-3); min-width: 0; }
+.ds-carousel__controls { display: flex; justify-content: flex-end; gap: var(--ds-space-2); }
+.ds-carousel__track {
+  display: flex;
+  gap: var(--ds-space-4);
+  margin: 0;
+  padding: var(--ds-space-2) var(--ds-space-1) var(--ds-space-6);
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  /* Mesmo recuo do padding: o snap do 1º item fica em scrollLeft 0. */
+  scroll-padding-inline: var(--ds-space-1);
+  scroll-behavior: smooth;
+  border-radius: var(--ds-radius-xl);
+}
+.ds-carousel__track:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+.ds-carousel__item {
+  flex: 0 0 clamp(240px, 78%, 280px);
+  display: flex;
+  flex-direction: column;
+  scroll-snap-align: start;
+}
+.ds-carousel__item > .ds-card { flex: 1; }
 
 /* ---------------------------------------------------------------- LIST ---
    Lista de linhas com ícone, conteúdo e meta (notificações).              */
