@@ -7,6 +7,7 @@ const SECTIONS = [
   { label: 'Pedidos', path: '/conta/pedidos', names: ['account-orders', 'account-order'] },
   { label: 'Endereços', path: '/conta/enderecos', names: ['account-addresses'] },
   { label: 'Notificações', path: '/conta/notificacoes', names: ['account-notifications'] },
+  { label: 'Segurança', path: '/conta/seguranca', names: ['account-security'] },
 ];
 </script>
 

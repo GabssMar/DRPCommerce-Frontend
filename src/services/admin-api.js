@@ -230,7 +230,12 @@ export const writeAudit = async ({ eventId, customerId = null, action, entityNam
 
 // --------------------------------------------------------- EQUIPE/EMPRESA ---
 
+// Lojas da conta: [{ membershipId, enterpriseId, tradeName, kindId }]. Aceita o
+// token global (antes de escolher a loja).
 export const listMyEnterprises = () => request('GET', store('enterprises/mine'), opts());
+// Primeira loja (ou mais uma): cria a empresa com a conta como dona principal.
+// Devolve { id, tradeName, isActive }; a sessão continua sem loja até o select-enterprise.
+export const registerEnterprise = (payload) => request('POST', store('enterprises/register'), opts(payload));
 export const updateEnterprise = (payload) => request('PUT', store('enterprises/current'), opts(payload));
 // Dados públicos da loja (nome, e-mail, telefone): o back não tem GET completo da empresa.
 // Rota do storefront: a loja vem do slug do endereço (STORE_SLUG), não do token.

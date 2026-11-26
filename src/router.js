@@ -22,10 +22,12 @@ const ROUTES = [
   ['account-orders', '/conta/pedidos'],
   ['account-order', '/conta/pedidos/:source/:id'],
   ['account-notifications', '/conta/notificacoes'],
+  ['account-security', '/conta/seguranca'],
   ['account-addresses', '/conta/enderecos'],
   // Painel
   ['admin-dashboard', '/admin'],
   ['admin-dashboard', '/admin/dashboard'],
+  ['admin-enterprise-choice', '/admin/entrar/loja'],
   ['admin-drops', '/admin/drops'],
   ['admin-drop-new', '/admin/drops/novo'],
   ['admin-drop', '/admin/drops/:id'],

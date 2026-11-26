@@ -132,6 +132,7 @@ const activeAuth = computed(() => (mode.value === 'login' ? login : register));
       class="ds-hint"
     >
       Modo de exemplo: entre com <span class="ds-mono">{{ MOCK_CUSTOMER_EMAIL }}</span> e qualquer senha.
+      <span class="ds-mono">bloqueado@exemplo.com</span> simula o bloqueio por tentativas.
     </p>
 
     <form
@@ -182,13 +183,14 @@ const activeAuth = computed(() => (mode.value === 'login' ? login : register));
                 class="ds-input"
                 type="password"
                 :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
-                :minlength="mode === 'register' ? 8 : undefined"
+                :minlength="mode === 'register' ? 12 : undefined"
+                :maxlength="mode === 'register' ? 128 : undefined"
                 required
               >
               <span
                 v-if="mode === 'register'"
                 class="ds-hint"
-              >Mínimo de 8 caracteres.</span>
+              >De 12 a 128 caracteres.</span>
             </div>
           </div>
         </article>

@@ -1,7 +1,7 @@
 import { IS_MOCK, MOCK_LATENCY_MS, REQUEST_TIMEOUT_MS } from './config';
 import { ApiError, networkError, timeoutError } from './api-error';
 import { logRequest } from './request-log';
-import { getAccessToken, tokenClaims } from './session';
+import { getAccessToken, tokenExpiresSoon } from './session';
 import { syncServerClock } from './clock';
 
 // Cliente HTTP único. Nenhuma tela chama fetch: tudo passa por request().
@@ -87,12 +87,6 @@ const unwrap = (data, status) => {
 // 401 com token ainda válido = a rota não aceita este token (ex.: CRUD da equipe
 // chamado com token de cliente). Renovar não resolve e gasta o limite de requisições
 // das rotas de autenticação do back. Só renova se o token venceu ou vence em 30 s.
-// Token que não é JWT (mock) conta como vencido.
-const tokenExpired = (token) => {
-  const exp = tokenClaims(token)?.exp;
-  return !exp || exp * 1000 - Date.now() < 30_000;
-};
-
 export async function request(method, url, { body, realm = 'backoffice', headers = {}, retry = true, withMeta = false } = {}) {
   const finalHeaders = { Accept: 'application/json', ...headers };
   if (body !== undefined) finalHeaders['Content-Type'] = 'application/json';
@@ -109,7 +103,7 @@ export async function request(method, url, { body, realm = 'backoffice', headers
 
   logRequest({ method, url, status: res.status, body, simulated: IS_MOCK });
 
-  if (res.status === 401 && retry && realm && refreshHandler && (!token || tokenExpired(token))) {
+  if (res.status === 401 && retry && realm && refreshHandler && (!token || tokenExpiresSoon(token))) {
     const renewed = await refreshHandler(realm);
     if (renewed) return request(method, url, { body, realm, headers, retry: false, withMeta });
   }

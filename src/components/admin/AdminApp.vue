@@ -1,15 +1,16 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import {
   BadgeDollarSign, LayoutDashboard, LogOut, Package, Plug, Radio, Receipt, Rocket, Settings, ShieldAlert, Users, Wallet,
 } from '@lucide/vue';
-import { focusMain, href, route } from '../../router';
+import { focusMain, href, navigate, route } from '../../router';
 import { IS_MOCK } from '../../services/config';
-import { isSignedIn, REALMS } from '../../services/session';
+import { getAccessToken, hasSelectedEnterprise, isSignedIn, REALMS, tokenClaims } from '../../services/session';
 import { logoutEmployee, restoreSession } from '../../services/auth';
 import { getCurrentEmployee } from '../../services/admin-api';
 import { initials } from '../../services/format';
 import AdminLogin from './AdminLogin.vue';
+import AdminEnterpriseChoice from './AdminEnterpriseChoice.vue';
 import RequestLog from './RequestLog.vue';
 import AdminDashboard from './AdminDashboard.vue';
 import AdminDrops from './AdminDrops.vue';
@@ -76,24 +77,49 @@ const signedIn = computed(() => isSignedIn(REALMS.backoffice));
 const restoring = ref(!IS_MOCK && !signedIn.value);
 const employee = ref(null);
 
-const loadEmployee = async () => {
-  employee.value = await getCurrentEmployee().catch(() => null);
-};
+// Token sem loja (várias ou nenhuma): só a escolha de loja aparece.
+const needsEnterprise = computed(() => signedIn.value && !hasSelectedEnterprise());
+const choosingEnterprise = computed(() => needsEnterprise.value || route.value.name === 'admin-enterprise-choice');
+
+watch([needsEnterprise, restoring], ([needs, isRestoring]) => {
+  if (needs && !isRestoring) navigate('/admin/entrar/loja');
+}, { immediate: true });
+
+// Funcionário da topbar: recarrega quando muda o vínculo, não a cada renovação.
+const membershipKey = computed(() => {
+  const token = getAccessToken(REALMS.backoffice);
+  if (!token || !hasSelectedEnterprise()) return null;
+  return tokenClaims(token)?.MembershipId ?? token;
+});
+
+// Abas internas (financeiro, configurações) trocam sem remontar a tela e sem perder o que foi digitado.
+// Trocar de loja em qualquer aba remonta tudo: a tela nunca mostra uma loja e grava em outra.
+const TAB_PAGES = new Set(['admin-finance', 'admin-settings']);
+const pageKey = computed(() => {
+  const { name, params, path } = route.value;
+  return `${TAB_PAGES.has(name) ? `${name}/${params.id ?? ''}` : path}@${membershipKey.value}`;
+});
+
+watch(membershipKey, async (key) => {
+  employee.value = null;
+  if (key) employee.value = await getCurrentEmployee().catch(() => null);
+}, { immediate: true });
 
 onMounted(async () => {
   if (restoring.value) {
     await restoreSession(REALMS.backoffice);
     restoring.value = false;
   }
-  if (signedIn.value) loadEmployee();
 });
 
-const onSignedIn = () => loadEmployee();
-
-const logout = async () => {
-  await logoutEmployee().catch(() => {});
-  employee.value = null;
+// Entrou pela tela de escolha com uma loja só: o back já selecionou, vai ao dashboard.
+const onSignedIn = () => {
+  if (route.value.name === 'admin-enterprise-choice' && hasSelectedEnterprise()) navigate('/admin/dashboard');
 };
+
+const onEnterpriseSelected = () => navigate('/admin/dashboard');
+
+const logout = () => logoutEmployee().catch(() => {});
 </script>
 
 <template>
@@ -211,10 +237,14 @@ const logout = async () => {
             v-else-if="!signedIn"
             @signed-in="onSignedIn"
           />
+          <AdminEnterpriseChoice
+            v-else-if="choosingEnterprise"
+            @selected="onEnterpriseSelected"
+          />
           <component
             :is="page"
             v-else
-            :key="route.path"
+            :key="pageKey"
             :params="route.params"
           />
 

@@ -28,6 +28,8 @@ import CustomerAuth from './components/account/CustomerAuth.vue';
 import LandingPage from './components/LandingPage.vue';
 import AccountOrders from './components/account/AccountOrders.vue';
 import AccountNotifications from './components/account/AccountNotifications.vue';
+import AccountNav from './components/account/AccountNav.vue';
+import AccountSecurity from './components/account/AccountSecurity.vue';
 import AccountAddresses from './components/account/AccountAddresses.vue';
 import AdminApp from './components/admin/AdminApp.vue';
 
@@ -197,7 +199,7 @@ const goToProduct = (slug) => navigate(`/vitrine/p/${encodeURIComponent(slug)}`)
 const goToCart = () => navigate('/sacola');
 
 const STORE_PAGES = ['vitrine', 'product', 'product-legacy', 'cart', 'checkout'];
-const ACCOUNT_PAGES = ['account', 'account-orders', 'account-order', 'account-notifications', 'account-addresses'];
+const ACCOUNT_PAGES = ['account', 'account-orders', 'account-order', 'account-notifications', 'account-addresses', 'account-security'];
 const isStorePage = computed(() => STORE_PAGES.includes(currentPage.value));
 const isOrdersPage = computed(() => ['account-orders', 'account-order'].includes(currentPage.value));
 const isDropsPage = computed(() => !isStorePage.value && !ACCOUNT_PAGES.includes(currentPage.value));
@@ -479,6 +481,19 @@ const dropBadge = computed(() => {
           Tentar de novo
         </button>
       </article>
+
+      <div
+        v-else-if="currentPage === 'account-security'"
+        class="ds-stack--6"
+      >
+        <div class="ds-cluster ds-cluster--between">
+          <h1 class="ds-title ds-title--lg">
+            Segurança
+          </h1>
+          <AccountNav />
+        </div>
+        <AccountSecurity :realm="REALMS.storefront" />
+      </div>
 
       <template v-else>
         <div class="ds-cluster ds-cluster--between">

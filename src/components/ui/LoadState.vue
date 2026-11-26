@@ -18,15 +18,11 @@ const props = defineProps({
 
 const emit = defineEmits(['retry']);
 
-// A mensagem já vem por `kind` do ApiError. Tentar de novo só aparece quando
-// repetir pode dar outro resultado (não em permissão, inexistente ou validação).
+// A mensagem já vem por `kind` do ApiError (no 429, com os segundos de espera).
+// Tentar de novo só aparece quando repetir pode dar outro resultado (não em
+// permissão, inexistente ou validação).
 const NO_RETRY = new Set(['forbidden', 'not-found', 'validation']);
 const canRetry = computed(() => !NO_RETRY.has(props.error?.kind));
-const waitHint = computed(() =>
-  props.error?.kind === 'rate-limit' && props.error.retryAfter
-    ? `Tente de novo em ${props.error.retryAfter} s.`
-    : '',
-);
 </script>
 
 <template>
@@ -57,9 +53,6 @@ const waitHint = computed(() =>
     />
     <p class="ds-text-danger">
       {{ error.message }}
-    </p>
-    <p v-if="waitHint">
-      {{ waitHint }}
     </p>
     <button
       v-if="canRetry"

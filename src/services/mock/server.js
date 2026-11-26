@@ -74,10 +74,110 @@ export const mockStoreControl = {
 const plans = createPlansMock({ data: () => data(), raw: (body, status) => raw(body, status), problem: (...a) => problem(...a), nowIso });
 
 // Identidade a partir do token "mock-storefront-customer-12" / "mock-backoffice-employee-1".
+// Token da equipe sem loja escolhida termina em "-global" (o id é o do usuário).
 const identity = (headers) => {
   const token = (headers?.Authorization ?? '').replace(/^Bearer\s+/i, '');
-  const match = token.match(/^mock-(storefront|backoffice)-(customer|employee)-(\d+)$/);
-  return match ? { realm: match[1], id: Number(match[3]) } : null;
+  const match = token.match(/^mock-(storefront|backoffice)-(customer|employee)-(\d+)(-global)?$/);
+  return match ? { realm: match[1], id: Number(match[3]), global: Boolean(match[4]) } : null;
+};
+
+// ------------------------------------------------- AUTH (cliente e equipe) ---
+
+// E-mails de exemplo para testar os fluxos da task 28 no modo mock:
+//   bloqueado@exemplo.com  login responde 429 com Retry-After (nas duas áreas)
+//   varias@exemplo.com     lojista com duas lojas: escolhe qual abrir
+//   nova@exemplo.com       lojista sem loja: cria a primeira
+const MOCK_EMAILS = {
+  rateLimited: 'bloqueado@exemplo.com',
+  multiStore: 'varias@exemplo.com',
+  newOwner: 'nova@exemplo.com',
+};
+const MULTI_STORE_USER_ID = 901;
+const NEW_OWNER_USER_ID = 900;
+const RETRY_AFTER_SECONDS = 30;
+
+const PASSWORD_MIN = 12;
+const PASSWORD_MAX = 128;
+const passwordPolicyError = (password) =>
+  typeof password === 'string' && password.length >= PASSWORD_MIN && password.length <= PASSWORD_MAX
+    ? null
+    : problem(400, 'Identity.PasswordPolicy', `A senha deve ter entre ${PASSWORD_MIN} e ${PASSWORD_MAX} caracteres.`);
+
+const rateLimited = () => ({
+  ...problem(429, 'Security.RateLimited', 'Muitas tentativas.'),
+  headers: { 'retry-after': String(RETRY_AFTER_SECONDS) },
+});
+
+const isEmail = (body, email) => String(body?.email ?? '').trim().toLowerCase() === email;
+
+// Famílias de sessão por área ({ familyId, createdAt, expiresAt, isCurrent }),
+// como GET auth/sessions devolve. Cada login abre uma família nova e atual.
+const hoursFromNow = (h) => new Date(Date.now() + h * 3600e3).toISOString();
+const familyId = (n) => `7f1c2a9e-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+const authSessions = (realm) => {
+  const d = data();
+  d.mockAuthSessions ??= {};
+  d.mockAuthSessions[realm] ??= [
+    { familyId: familyId(1), createdAt: hoursFromNow(-2), expiresAt: hoursFromNow(24 * 12), isCurrent: true },
+    { familyId: familyId(2), createdAt: hoursFromNow(-72), expiresAt: hoursFromNow(24 * 4), isCurrent: false },
+    { familyId: familyId(3), createdAt: hoursFromNow(-24 * 9), expiresAt: hoursFromNow(20), isCurrent: false },
+  ];
+  return d.mockAuthSessions[realm];
+};
+
+const openFamily = (realm) => {
+  const list = authSessions(realm);
+  if (list.some((s) => s.isCurrent)) return;
+  const next = list.reduce((max, s) => Math.max(max, Number(s.familyId.slice(-12))), 0) + 1;
+  list.unshift({ familyId: familyId(next), createdAt: nowIso(), expiresAt: hoursFromNow(24 * 14), isCurrent: true });
+};
+
+// Login (as duas áreas) troca a família atual por uma nova.
+const loginFamily = (realm) => {
+  authSessions(realm).forEach((s) => {
+    s.isCurrent = false;
+  });
+  openFamily(realm);
+};
+
+// Rotas de sessão e senha comuns às duas áreas (o `who` já foi conferido).
+function authAccount(realm, method, path, body) {
+  if (path === 'auth/sessions' && method === 'GET') return raw(authSessions(realm));
+  const revoke = path.match(/^auth\/sessions\/([0-9a-f-]+)$/);
+  if (revoke && method === 'DELETE') {
+    const list = authSessions(realm);
+    const index = list.findIndex((s) => s.familyId === revoke[1]);
+    if (index < 0) return problem(404, 'Identity.SessionNotFound', 'Sessão não encontrada.');
+    list.splice(index, 1);
+    return noContent();
+  }
+  if (path === 'auth/logout-all' && method === 'POST') {
+    data().mockAuthSessions[realm] = [];
+    return noContent();
+  }
+  if (path === 'auth/change-password' && method === 'POST') {
+    if (!body?.currentPassword) return problem(400, 'Identity.InvalidCredentials', 'Senha atual incorreta.');
+    const weak = passwordPolicyError(body?.newPassword);
+    if (weak) return weak;
+    data().mockAuthSessions[realm] = [];
+    return noContent();
+  }
+  return null;
+}
+
+// Lojas de quem tem token global (antes de escolher). Quem já escolheu continua
+// vendo a loja do seed, como antes.
+const memberships = () => {
+  const d = data();
+  d.mockMemberships ??= {
+    [MULTI_STORE_USER_ID]: [
+      { membershipId: 1, enterpriseId: d.enterprise.id, tradeName: d.enterprise.tradeName, kindId: 1 },
+      { membershipId: 2, enterpriseId: 2, tradeName: 'Veloce Outlet', kindId: 2 },
+    ],
+    [NEW_OWNER_USER_ID]: [],
+  };
+  return d.mockMemberships;
 };
 
 // ------------------------------------------------------------------ CRUD ---
@@ -148,7 +248,15 @@ const customerResponse = (c) => ({
   createdAt: c.createdAt, updatedAt: c.updatedAt,
 });
 
-const session = (realm, id) => ({
+// Como o cookie de refresh do back: guarda a última sessão emitida em cada área.
+const session = (realm, id) => {
+  const d = data();
+  d.refreshCookie ??= {};
+  d.refreshCookie[realm] = id;
+  return sessionBody(realm, id);
+};
+
+const sessionBody = (realm, id) => ({
   accessToken: `mock-${realm}-${realm === 'storefront' ? 'customer' : 'employee'}-${id}`,
   accessTokenExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
   requiresEnterpriseSelection: false,
@@ -161,13 +269,18 @@ function storeStorefront(method, path, body, who) {
 
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
   if (path === 'auth/login' && method === 'POST') {
+    if (isEmail(body, MOCK_EMAILS.rateLimited)) return rateLimited();
     const c = customers.find((x) => x.email.toLowerCase() === String(body?.email ?? '').toLowerCase() && x.isActive);
-    return c ? raw(session('storefront', c.id)) : problem(401, 'Identity.InvalidCredentials', 'E-mail ou senha inválidos.');
+    if (!c) return problem(401, 'Identity.InvalidCredentials', 'E-mail ou senha inválidos.');
+    loginFamily('storefront');
+    return raw(session('storefront', c.id));
   }
   if (path === 'auth/register' && method === 'POST') {
     if (customers.some((x) => x.email.toLowerCase() === String(body?.email ?? '').toLowerCase())) {
       return problem(409, 'Identity.EmailTaken', 'Já existe uma conta com este e-mail.');
     }
+    const weak = passwordPolicyError(body?.password);
+    if (weak) return weak;
     const c = {
       id: nextIdOf(customers), enterpriseId: 1, fullName: body.fullName, email: body.email, phone: body.phone,
       normalizedEmail: String(body.email).toUpperCase(), emailConfirmed: false, addressLine: body.addressLine,
@@ -179,7 +292,7 @@ function storeStorefront(method, path, body, who) {
     return raw(customerResponse(c));
   }
   if (path === 'auth/refresh') return problem(401, 'Identity.RefreshRequired', 'Sessão de renovação ausente.');
-  if (path === 'auth/logout' || path === 'auth/logout-all') return noContent();
+  if (path === 'auth/logout') return noContent();
   if (path === 'products' && method === 'GET') {
     return raw(d['store/products'].filter((p) => p.isActive).map((p) => ({
       id: p.id, name: p.name, slug: p.slug, description: p.description, price: p.price, brand: p.brand,
@@ -193,9 +306,8 @@ function storeStorefront(method, path, body, who) {
   if (!who || who.realm !== 'storefront') return problem(401, 'Security.Unauthenticated', 'Autenticação necessária.');
   const me = customers.find((c) => c.id === who.id);
 
-  if (path === 'auth/change-password' && method === 'POST') {
-    return body?.newPassword?.length >= 8 ? noContent() : problem(400, 'Identity.WeakPassword', 'A nova senha precisa de ao menos 8 caracteres.');
-  }
+  const account = authAccount('storefront', method, path, body);
+  if (account) return account;
   if (path === 'me' && method === 'GET') return raw(customerResponse(me));
   if (path === 'me' && method === 'PUT') {
     Object.assign(me, {
@@ -333,14 +445,31 @@ function storeBackoffice(method, path, body, who) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
   if (path === 'auth/login' && method === 'POST') {
-    return body?.password ? raw({ ...session('backoffice', SIGNED_IN_EMPLOYEE_ID), requiresEnterpriseSelection: false })
-      : problem(401, 'Identity.InvalidCredentials', 'E-mail ou senha inválidos.');
+    if (isEmail(body, MOCK_EMAILS.rateLimited)) return rateLimited();
+    if (!body?.password) return problem(401, 'Identity.InvalidCredentials', 'E-mail ou senha inválidos.');
+    loginFamily('backoffice');
+    // Várias lojas ou nenhuma: token global (sem loja) até o select-enterprise.
+    const userId = isEmail(body, MOCK_EMAILS.multiStore) ? MULTI_STORE_USER_ID
+      : isEmail(body, MOCK_EMAILS.newOwner) ? NEW_OWNER_USER_ID : null;
+    if (userId) {
+      const choices = memberships()[userId];
+      return raw({
+        ...session('backoffice', `${userId}-global`),
+        requiresEnterpriseSelection: choices.length > 1,
+        enterprises: choices,
+      });
+    }
+    return raw(session('backoffice', SIGNED_IN_EMPLOYEE_ID));
   }
   // Com token da equipe, renova (o front renova depois que o plano é concedido).
   if (path === 'auth/refresh') {
-    return who?.realm === 'backoffice' ? raw(session('backoffice', who.id)) : problem(401, 'Identity.RefreshRequired', 'Sessão de renovação ausente.');
+    const id = who?.realm === 'backoffice' ? who.id : d.refreshCookie?.backoffice;
+    return id != null ? raw(session('backoffice', id)) : problem(401, 'Identity.RefreshRequired', 'Sessão de renovação ausente.');
   }
-  if (path === 'auth/logout') return noContent();
+  if (path === 'auth/logout') {
+    if (d.refreshCookie) d.refreshCookie.backoffice = null;
+    return noContent();
+  }
   if (path === 'auth/register' && method === 'POST') {
     if (!body?.fullName || !body?.email || String(body?.password ?? '').length < 8) {
       return problem(400, 'Identity.InvalidRegistration', 'Informe nome, e-mail e uma senha de ao menos 8 caracteres.');
@@ -353,11 +482,21 @@ function storeBackoffice(method, path, body, who) {
 
   if (!who || who.realm !== 'backoffice') return null;
 
+  const account = authAccount('backoffice', method, path, body);
+  if (account) return account;
+
   const integration = integrations.route(method, path, body);
   if (integration) return integration;
 
-  if (path === 'auth/select-enterprise' && method === 'POST') return raw(session('backoffice', who.id));
+  // Token global (várias lojas ou nenhuma) escolhe entre as suas; com loja, renova a mesma.
+  if (path === 'auth/select-enterprise' && method === 'POST') {
+    if (!who.global) return raw(session('backoffice', who.id));
+    const choice = (memberships()[who.id] ?? []).find((m) => m.membershipId === Number(body?.membershipId));
+    if (!choice) return problem(403, 'Identity.MembershipUnavailable', 'Loja indisponível para esta conta.');
+    return raw(session('backoffice', choice.membershipId));
+  }
   if (path === 'enterprises/mine' && method === 'GET') {
+    if (who.global) return raw(memberships()[who.id] ?? []);
     if (d.newOwnerWithoutStore) return raw([]);
     return raw([{
       membershipId: 1, enterpriseId: d.enterprise.id, tradeName: d.enterprise.tradeName, kindId: 1,
@@ -377,6 +516,10 @@ function storeBackoffice(method, path, body, who) {
     });
     plans.reset();
     d.newOwnerWithoutStore = false;
+    if (who.global) {
+      const owned = memberships()[who.id] ?? (memberships()[who.id] = []);
+      if (!owned.some((m) => m.enterpriseId === d.enterprise.id)) owned.push({ membershipId: 1, enterpriseId: d.enterprise.id, tradeName: body.tradeName, kindId: 1 });
+    }
     return raw({
       id: d.enterprise.id, tradeName: d.enterprise.tradeName, isActive: true, planId: 1, contractRevision: 1,
       storefrontSlug: slug, storefrontUrl: `https://drpcommerce.example/${slug}`,
