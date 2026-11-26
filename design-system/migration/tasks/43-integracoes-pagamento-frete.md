@@ -1,6 +1,21 @@
 # [Integrações · Front-end] Pagamento Mercado Pago e frete Melhor Envio no checkout
 
-**Bloqueada pelo back-end** · **Depende de:** 32, 37 · Fonte: [PlanejamentoIntegracoes.md](https://github.com/joseHenrique346/DRPCommerce-Backend/blob/main/Documentation/Shared/PlanejamentoIntegracoes.md)
+**Feita em mock em 26/11/2026** (exceto a etiqueta, que o back ainda não tem) · **Depende de:** 32 · Fonte: [PlanejamentoIntegracoes.md](https://github.com/joseHenrique346/DRPCommerce-Backend/blob/main/Documentation/Shared/PlanejamentoIntegracoes.md)
+
+## Situação (26/11/2026)
+
+O back entregou as integrações na PR #94 (24/11). [MercadoPago.md](https://github.com/joseHenrique346/DRPCommerce-Backend/blob/main/Documentation/Shared/MercadoPago.md) e [MelhorEnvio.md](https://github.com/joseHenrique346/DRPCommerce-Backend/blob/main/Documentation/Shared/MelhorEnvio.md) descrevem as rotas.
+
+| Parte | Front | Rotas |
+|---|---|---|
+| Frete cotado no checkout | feito na task 32 (`StoreCheckout.vue`) | `POST storefront/{slug}/checkout/shipping-quotes`, `shippingQuoteToken` no checkout |
+| Pagamento: link do Mercado Pago e status | checkout e "Meus pedidos" abrem `payment.checkoutUrl` e consultam o pedido até sair de pendente (5 s e 10 s); voltar da página de pagamento não confirma nada | `POST storefront/{slug}/checkout`, `GET storefront/{slug}/orders/{id}` |
+| Estorno | "Meus pedidos" mostra o andamento de `paymentOperations` (estorno integral) | `GET storefront/{slug}/orders/{id}` |
+| Conexões da loja | `AdminIntegrations.vue` (`#/admin/integracoes`): conectar por OAuth (sandbox/produção), vendedor de teste do servidor, escolher Mercado Pago ou manual no checkout, desconectar, URL de notificações, avisos pendentes | `integrations/mercado-pago` (status, `oauth/start`, `sandbox/connect`, `selection`, `notifications`), `integrations/melhor-envio/oauth/start`, `provider-connections` (GET, DELETE) |
+| Etiqueta ("Gerar etiqueta") | **pendente** | o back ainda não tem rota de etiqueta (só cotação) |
+| Estorno pelo painel (repetir, confirmar estorno manual) | fica com a task 37 (ciclo do pedido no painel) | `orders/{id}/payment-operations/{operationId}/retry` e `/confirm-manual-refund` |
+
+O OAuth termina no back, que volta para o `BackofficeReturnUrl` com `?mercadoPago=connected` ou `?melhorEnvio=connected`; o painel mostra o aviso e relê o status autenticado. No mock, o "OAuth" conecta na hora e o painel de simulação aprova o pagamento ou pede estorno do último pedido.
 
 ## Funcionalidade nova
 

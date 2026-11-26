@@ -5,7 +5,7 @@ import { useAsync, useAction } from '../composables/useAsync';
 import { useBag } from '../composables/useBag';
 import { href } from '../router';
 import { isSignedIn, REALMS } from '../services/session';
-import { getMe, getShippingQuotes, listAddresses, PAYMENT_METHODS, placeOrder } from '../services/client-api';
+import { getMe, getOrderDetail, getShippingQuotes, listAddresses, PAYMENT_METHODS, placeOrder } from '../services/client-api';
 import { STATES, ufOf } from '../services/status';
 import { brl, formatDateTime } from '../services/format';
 import LoadState from './ui/LoadState.vue';
@@ -168,6 +168,23 @@ const submit = () => {
 };
 
 const payment = computed(() => confirmed.value?.payment ?? null);
+
+// Task 43: depois do pedido, acompanha o pagamento até sair de "pendente". Quem confirma é o
+// back (aviso do Mercado Pago ou a loja); voltar da página de pagamento não confirma nada.
+const PAYMENT_POLL_MS = 5000;
+const isPaid = computed(() => confirmed.value?.paymentStatusId === 2);
+watch(() => confirmed.value?.paymentStatusId === 1, (pending, _, onCleanup) => {
+  if (!pending) return;
+  const timer = setInterval(async () => {
+    if (document.visibilityState === 'hidden') return;
+    try {
+      confirmed.value = (await getOrderDetail('store', confirmed.value.id)).order;
+    } catch {
+      /* mantém o último estado; a próxima volta tenta de novo */
+    }
+  }, PAYMENT_POLL_MS);
+  onCleanup(() => clearInterval(timer));
+});
 </script>
 
 <template>
@@ -211,12 +228,13 @@ const payment = computed(() => confirmed.value?.payment ?? null);
             Pedido nº <span class="ds-mono">{{ confirmed.number }}</span>
           </p>
         </div>
-        <span class="ds-badge ds-badge--scheduled">
+        <span :class="['ds-badge', isPaid ? 'ds-badge--success' : 'ds-badge--scheduled']">
           <span
+            v-if="!isPaid"
             class="ds-badge__dot"
             aria-hidden="true"
           />
-          Pagamento {{ (confirmed.paymentStatus || 'pendente').toLowerCase() }}
+          {{ isPaid ? 'Pagamento confirmado' : `Pagamento ${(confirmed.paymentStatus || 'pendente').toLowerCase()}` }}
         </span>
       </header>
 
@@ -242,7 +260,10 @@ const payment = computed(() => confirmed.value?.payment ?? null);
           aria-hidden="true"
         />
         <p class="ds-text-sm ds-grow ds-prose">
-          <template v-if="payment?.instructions">
+          <template v-if="isPaid">
+            Pagamento confirmado. Você acompanha a separação e o envio em "Meus pedidos".
+          </template>
+          <template v-else-if="payment?.instructions">
             {{ payment.instructions }}
           </template>
           <template v-else-if="payment?.checkoutUrl">
@@ -256,7 +277,7 @@ const payment = computed(() => confirmed.value?.payment ?? null);
 
       <div class="ds-cluster ds-cluster--2">
         <a
-          v-if="payment?.checkoutUrl"
+          v-if="payment?.checkoutUrl && !isPaid"
           class="ds-btn ds-btn--primary"
           :href="payment.checkoutUrl"
           target="_blank"
@@ -272,7 +293,7 @@ const payment = computed(() => confirmed.value?.payment ?? null);
           <span class="ds-sr-only">(abre em nova aba)</span>
         </a>
         <a
-          :class="['ds-btn', payment?.checkoutUrl ? 'ds-btn--secondary' : 'ds-btn--primary']"
+          :class="['ds-btn', payment?.checkoutUrl && !isPaid ? 'ds-btn--secondary' : 'ds-btn--primary']"
           :href="href(`/conta/pedidos/store/${confirmed.id}`)"
         >Acompanhar pedido</a>
         <a

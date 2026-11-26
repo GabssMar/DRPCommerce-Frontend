@@ -576,7 +576,7 @@ const dropBadge = computed(() => {
     />
 
     <SimulationPanel
-      v-if="SHOW_SIMULATION && ['portal', 'detail', 'vitrine', 'product', 'cart'].includes(currentPage)"
+      v-if="SHOW_SIMULATION && ['portal', 'detail', 'vitrine', 'product', 'cart', 'checkout', 'account-orders', 'account-order'].includes(currentPage)"
       :active-event-id="selectedEventId"
       :current-page="currentPage"
       :event-dates="currentPage === 'detail' ? dropEvent : null"

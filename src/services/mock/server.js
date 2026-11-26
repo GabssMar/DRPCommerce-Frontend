@@ -5,6 +5,7 @@ import { createCatalogMock } from './catalog';
 import { createAddressesMock } from './addresses';
 import { createCartMock } from './cart';
 import { createCheckoutMock } from './checkout';
+import { createIntegrationsMock } from './integrations';
 import { createDropQueueMock } from './drop-queue';
 import { serverNow } from '../clock';
 import { getAccessToken, REALMS } from '../session';
@@ -43,8 +44,11 @@ const addresses = createAddressesMock({ data: () => data(), ok: (content) => ok(
 
 const cart = createCartMock({ data: () => data(), ok: (content) => ok(content), problem: (...a) => problem(...a), catalog });
 
+const integrations = createIntegrationsMock({ data: () => data(), raw: (body, status) => raw(body, status), problem: (...a) => problem(...a), now: serverNow });
+
 const checkout = createCheckoutMock({
   data: () => data(), ok: (content) => ok(content), problem: (...a) => problem(...a), cart, catalog,
+  paymentGateway: () => integrations.paymentGateway(),
   addressesOf: (customerId) => addresses.route('GET', 'me/addresses', null, { realm: 'storefront', id: customerId })?.data?.content ?? [],
 });
 
@@ -59,6 +63,12 @@ export const mockDropControl = {
   approvePayment: (eventId) => signedCustomerId() && dropQueue.control.approvePayment(eventId, signedCustomerId()),
   failPayment: (eventId) => signedCustomerId() && dropQueue.control.failPayment(eventId, signedCustomerId()),
   setStock: (eventId, mode) => dropQueue.control.setStock(eventId, mode),
+};
+
+// Pagamento da vitrine (task 43): o "webhook" do Mercado Pago no mock.
+export const mockStoreControl = {
+  approvePayment: () => signedCustomerId() && checkout.control.approvePayment(signedCustomerId()),
+  requestRefund: () => signedCustomerId() && checkout.control.requestRefund(signedCustomerId()),
 };
 
 const plans = createPlansMock({ data: () => data(), raw: (body, status) => raw(body, status), problem: (...a) => problem(...a), nowIso });
@@ -342,6 +352,9 @@ function storeBackoffice(method, path, body, who) {
   if (path === 'enterprise-plans' && method === 'GET') return raw(plans.catalog());
 
   if (!who || who.realm !== 'backoffice') return null;
+
+  const integration = integrations.route(method, path, body);
+  if (integration) return integration;
 
   if (path === 'auth/select-enterprise' && method === 'POST') return raw(session('backoffice', who.id));
   if (path === 'enterprises/mine' && method === 'GET') {

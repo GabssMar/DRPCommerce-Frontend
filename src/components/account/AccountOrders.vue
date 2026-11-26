@@ -106,6 +106,35 @@ const cancel = useAction(async () => {
 // Cobrança do pedido da vitrine aguardando pagamento.
 const pendingPayment = computed(() => (selected.value?.source === 'store' && order.value?.canCustomerCancel ? order.value : null));
 
+// Task 43: o pagamento é confirmado pelo back (aviso do Mercado Pago ou a loja). Enquanto
+// pendente, relê o pedido a cada 10 s; voltar da página de pagamento não confirma nada.
+const PAYMENT_POLL_MS = 10000;
+watch(() => Boolean(pendingPayment.value), (pending, _, onCleanup) => {
+  if (!pending) return;
+  const timer = setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
+    detail.reload();
+    list.reload();
+  }, PAYMENT_POLL_MS);
+  onCleanup(() => clearInterval(timer));
+}, { immediate: true });
+
+// Estorno (paymentOperations kind 2 = estorno integral), como o back informa.
+const REFUND_STATUS = {
+  1: 'Estorno solicitado', 2: 'Estorno em processamento', 3: 'Estorno em andamento', 4: 'Estorno concluído',
+  5: 'Estorno não concluído', 6: 'Estorno em verificação', 7: 'Estorno aguardando confirmação da loja',
+  8: 'Estorno em revisão', 9: '',
+};
+const refund = computed(() => {
+  const ops = (order.value?.paymentOperations ?? []).filter((op) => op.kind === 2 || op.kind === 'FullRefund');
+  const last = ops.at(-1);
+  if (!last) return null;
+  const statusId = typeof last.status === 'number' ? last.status
+    : { Requested: 1, Processing: 2, Pending: 3, Succeeded: 4, Failed: 5, OutcomeUnknown: 6, AwaitingManualConfirmation: 7, ReviewRequired: 8, Superseded: 9 }[last.status];
+  const label = REFUND_STATUS[statusId];
+  return label ? { label, amount: last.amount, done: statusId === 4 } : null;
+});
+
 const open = (o) => navigate(`/conta/pedidos/${o.source}/${o.id}`);
 </script>
 
@@ -251,6 +280,22 @@ const open = (o) => navigate(`/conta/pedidos/${o.source}/${o.id}`);
           >
             <template v-if="order">
               <div
+                v-if="refund"
+                class="ds-card ds-card--sunken ds-stack--1"
+                role="status"
+              >
+                <span class="ds-label-caps">Estorno</span>
+                <p class="ds-text-sm">
+                  {{ refund.label }} · {{ brl(refund.amount) }}
+                </p>
+                <p
+                  v-if="!refund.done"
+                  class="ds-hint"
+                >
+                  O valor volta pelo mesmo meio de pagamento. O prazo depende do Mercado Pago e do banco.
+                </p>
+              </div>
+              <div
                 v-if="pendingPayment"
                 class="ds-card ds-card--sunken ds-stack--2"
               >
@@ -262,7 +307,10 @@ const open = (o) => navigate(`/conta/pedidos/${o.source}/${o.id}`);
                   </template>
                 </p>
                 <p class="ds-hint">
-                  {{ pendingPayment.payment?.instructions || 'A loja confirmará o recebimento. Sem confirmação até o prazo, o pedido é cancelado.' }}
+                  {{ pendingPayment.payment?.instructions
+                    || (pendingPayment.payment?.checkoutUrl
+                      ? 'Conclua o pagamento no Mercado Pago. A confirmação aparece aqui sozinha; voltar daquela página não confirma o pedido.'
+                      : 'A loja confirmará o recebimento. Sem confirmação até o prazo, o pedido é cancelado.') }}
                 </p>
                 <a
                   v-if="pendingPayment.payment?.checkoutUrl"

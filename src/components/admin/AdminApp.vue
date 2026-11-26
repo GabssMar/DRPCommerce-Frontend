@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import {
-  BadgeDollarSign, LayoutDashboard, LogOut, Package, Radio, Receipt, Rocket, Settings, ShieldAlert, Users, Wallet,
+  BadgeDollarSign, LayoutDashboard, LogOut, Package, Plug, Radio, Receipt, Rocket, Settings, ShieldAlert, Users, Wallet,
 } from '@lucide/vue';
 import { focusMain, href, route } from '../../router';
 import { IS_MOCK } from '../../services/config';
@@ -25,6 +25,7 @@ import AdminCustomers from './AdminCustomers.vue';
 import AdminFraud from './AdminFraud.vue';
 import AdminSettings from './AdminSettings.vue';
 import AdminPlan from './AdminPlan.vue';
+import AdminIntegrations from './AdminIntegrations.vue';
 import PlanSignup from '../plans/PlanSignup.vue';
 
 // Shell do painel da loja (patterns/app-shell.md): rail com os módulos,
@@ -39,6 +40,7 @@ const SECTIONS = [
   { label: 'Financeiro', path: '/admin/financeiro', icon: Wallet, routes: ['admin-finance'] },
   { label: 'Clientes', path: '/admin/clientes', icon: Users, routes: ['admin-customers'] },
   { label: 'Plano', path: '/admin/plano', icon: BadgeDollarSign, routes: ['admin-plan'] },
+  { label: 'Integrações', path: '/admin/integracoes', icon: Plug, routes: ['admin-integrations'] },
   { label: 'Configurações', path: '/admin/configuracoes', icon: Settings, routes: ['admin-settings'] },
 ];
 
@@ -58,6 +60,7 @@ const PAGES = {
   'admin-fraud': AdminFraud,
   'admin-settings': AdminSettings,
   'admin-plan': AdminPlan,
+  'admin-integrations': AdminIntegrations,
 };
 // Cadastro de lojista vindo da landing page: abre com ou sem sessão.
 const isSignup = computed(() => route.value.name === 'admin-signup');
