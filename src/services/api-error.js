@@ -104,3 +104,12 @@ export class ApiError extends Error {
 
 export const timeoutError = () => new ApiError({ status: 0, kind: 'timeout', code: 'Timeout' });
 export const networkError = () => new ApiError({ status: 0, kind: 'network', code: 'Network' });
+
+// Mensagem de um campo do formulário: validação do back (fieldErrors) ou conflito
+// de unicidade pelo `code` (ex.: { 'Product.DuplicateSlug': 'slug' }).
+export const fieldMessage = (error, field, conflicts = {}) => {
+  if (!error) return '';
+  const key = Object.keys(error.fieldErrors ?? {}).find((k) => k.toLowerCase() === field.toLowerCase());
+  if (key) return error.fieldErrors[key][0];
+  return conflicts[error.code] === field ? error.message : '';
+};

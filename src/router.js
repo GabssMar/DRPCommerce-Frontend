@@ -40,6 +40,8 @@ const ROUTES = [
   ['admin-finance', '/admin/financeiro/:tab'],
   ['admin-catalog', '/admin/catalogo'],
   ['admin-catalog', '/admin/catalogo/categorias'],
+  ['admin-product', '/admin/catalogo/produtos/:id'],
+  ['admin-product', '/admin/catalogo/produtos/:id/:tab'],
   ['admin-coupons', '/admin/catalogo/cupons'],
   ['admin-suppliers', '/admin/catalogo/fornecedores'],
   ['admin-customers', '/admin/clientes'],

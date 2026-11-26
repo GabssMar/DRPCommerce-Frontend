@@ -22,6 +22,7 @@ import AdminLive from './AdminLive.vue';
 import AdminOrders from './AdminOrders.vue';
 import AdminFinance from './AdminFinance.vue';
 import AdminCatalog from './AdminCatalog.vue';
+import AdminProductEditor from './AdminProductEditor.vue';
 import AdminCoupons from './AdminCoupons.vue';
 import AdminSuppliers from './AdminSuppliers.vue';
 import AdminCustomers from './AdminCustomers.vue';
@@ -40,7 +41,7 @@ const SECTIONS = [
   { label: 'Drops', path: '/admin/drops', icon: Rocket, routes: ['admin-drops', 'admin-drop', 'admin-drop-new', 'admin-drop-tab'], permission: 'drop.events.view' },
   { label: 'Drop ao vivo', path: '/admin/ao-vivo', icon: Radio, routes: ['admin-live'], permission: 'drop.events.view' },
   { label: 'Pedidos', path: '/admin/pedidos', icon: Receipt, routes: ['admin-orders'], permission: 'orders.view' },
-  { label: 'Catálogo', path: '/admin/catalogo', icon: Package, routes: ['admin-catalog', 'admin-coupons', 'admin-suppliers'], permission: ['products.view', 'categories.view', 'coupons.view', 'suppliers.manage'] },
+  { label: 'Catálogo', path: '/admin/catalogo', icon: Package, routes: ['admin-catalog', 'admin-product', 'admin-coupons', 'admin-suppliers'], permission: ['products.view', 'categories.view', 'coupons.view', 'suppliers.manage'] },
   { label: 'Fraude', path: '/admin/fraude', icon: ShieldAlert, routes: ['admin-fraud'], ownerOnly: true },
   { label: 'Financeiro', path: '/admin/financeiro', icon: Wallet, routes: ['admin-finance'], ownerOnly: true },
   { label: 'Clientes', path: '/admin/clientes', icon: Users, routes: ['admin-customers'], permission: 'customers.view' },
@@ -63,6 +64,7 @@ const PAGES = {
   'admin-orders': AdminOrders,
   'admin-finance': AdminFinance,
   'admin-catalog': AdminCatalog,
+  'admin-product': AdminProductEditor,
   'admin-coupons': AdminCoupons,
   'admin-suppliers': AdminSuppliers,
   'admin-customers': AdminCustomers,
@@ -106,9 +108,9 @@ const membershipKey = computed(() => {
   return tokenClaims(token)?.MembershipId ?? token;
 });
 
-// Abas internas (financeiro, configurações) trocam sem remontar a tela e sem perder o que foi digitado.
+// Abas internas (produto, financeiro, configurações) trocam sem remontar a tela e sem perder o que foi digitado.
 // Trocar de loja em qualquer aba remonta tudo: a tela nunca mostra uma loja e grava em outra.
-const TAB_PAGES = new Set(['admin-finance', 'admin-settings']);
+const TAB_PAGES = new Set(['admin-product', 'admin-finance', 'admin-settings']);
 const pageKey = computed(() => {
   const { name, params, path } = route.value;
   return `${TAB_PAGES.has(name) ? `${name}/${params.id ?? ''}` : path}@${membershipKey.value}`;

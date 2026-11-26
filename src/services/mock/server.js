@@ -565,7 +565,178 @@ function teamRoutes(method, path, body) {
   return null;
 }
 
-function storeBackoffice(method, path, body, who) {
+// ---------------------------------------------- PRODUTOS E VARIANTES (task 33) ---
+
+const PRODUCT_SORTS = {
+  name: (a, b) => a.name.localeCompare(b.name),
+  price_asc: (a, b) => a.price - b.price,
+  price_desc: (a, b) => b.price - a.price,
+  newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
+};
+const DIMENSIONS = ['weight', 'height', 'width', 'length'];
+
+const variantResponse = (p, v) => {
+  const tracksStock = !p.isDigital && !(p.hasVariants && v.isDefault);
+  const effective = Object.fromEntries(DIMENSIONS.map((k) => [k, v[`${k}Override`] ?? p[k]]));
+  return {
+    ...v,
+    tracksStock,
+    price: v.priceOverride ?? p.price,
+    costPrice: v.costPriceOverride ?? p.costPrice,
+    ...effective,
+    availableQuantity: tracksStock ? v.stockQuantity - v.reservedQuantity : 0,
+  };
+};
+
+const productVariants = (p) => data()['store/product-variants']
+  .filter((v) => v.productId === p.id)
+  .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.id - b.id);
+
+const productResponse = (p) => ({
+  id: p.id, enterpriseId: p.enterpriseId, categoryId: p.categoryId, supplierId: p.supplierId, name: p.name, slug: p.slug,
+  description: p.description, sku: p.sku, barCode: p.barCode, brand: p.brand, imageUrls: p.imageUrls,
+  price: p.price, costPrice: p.costPrice, weight: p.weight, height: p.height, width: p.width, length: p.length,
+  isActive: p.isActive, isDigital: p.isDigital, hasVariants: Boolean(p.hasVariants), isTransferredToDrop: Boolean(p.isTransferredToDrop),
+  createdAt: p.createdAt, updatedAt: p.updatedAt,
+  variants: productVariants(p).map((v) => variantResponse(p, v)),
+});
+
+const available = (p) => productResponse(p).variants.reduce((sum, v) => sum + v.availableQuantity, 0);
+const queryBool = (value) => (value == null ? null : value === 'true');
+
+function catalogRoutes(method, path, body, query) {
+  const d = data();
+  const products = d['store/products'].filter((p) => !p.isDeleted);
+  const allVariants = d['store/product-variants'];
+  const duplicate = (field, value, exceptId) => products.some((p) => p.id !== exceptId && String(p[field]).toLowerCase() === String(value).toLowerCase());
+
+  if (path === 'products/search' && method === 'GET') {
+    const term = (query.get('Term') ?? '').trim().toLowerCase();
+    const min = query.get('MinPrice');
+    const max = query.get('MaxPrice');
+    const rows = products.filter((p) => {
+      const skus = productVariants(p).map((v) => v.sku).join(' ');
+      if (term && !`${p.name} ${p.sku} ${p.brand} ${skus}`.toLowerCase().includes(term)) return false;
+      if (query.get('CategoryId') && p.categoryId !== Number(query.get('CategoryId'))) return false;
+      if (query.get('Brand') && p.brand.toLowerCase() !== query.get('Brand').toLowerCase()) return false;
+      if (min && p.price < Number(min)) return false;
+      if (max && p.price > Number(max)) return false;
+      const inStock = queryBool(query.get('InStock'));
+      if (inStock !== null && (available(p) > 0) !== inStock) return false;
+      const isActive = queryBool(query.get('IsActive'));
+      return isActive === null || p.isActive === isActive;
+    }).sort(PRODUCT_SORTS[query.get('Sort')] ?? PRODUCT_SORTS.name);
+    const page = Number(query.get('Page') ?? 1);
+    const pageSize = Number(query.get('PageSize') ?? 20);
+    return ok({ items: rows.slice((page - 1) * pageSize, page * pageSize).map(productResponse), totalCount: rows.length, page, pageSize });
+  }
+
+  const byIdMatch = path.match(/^products\/get-by-id\/(\d+)$/);
+  if (byIdMatch && method === 'GET') {
+    const p = products.find((x) => x.id === Number(byIdMatch[1]));
+    return p ? ok(productResponse(p)) : problem(404, 'Product.NotFound', 'Produto não encontrado.');
+  }
+
+  if (path === 'products/add' && method === 'POST') {
+    if (duplicate('slug', body.slug)) return problem(409, 'Product.DuplicateSlug', 'Já existe um produto com este slug.');
+    if (duplicate('sku', body.sku)) return problem(409, 'Product.DuplicateSku', 'Já existe um produto com este SKU.');
+    const p = {
+      ...body, id: nextIdOf(d['store/products']), enterpriseId: 1, hasVariants: false, isDeleted: false, deletedAt: null,
+      createdAt: nowIso(), updatedAt: nowIso(),
+    };
+    d['store/products'].push(p);
+    allVariants.push({
+      id: p.id * 10, productId: p.id, name: 'Padrão', sku: p.sku, barCode: p.barCode ?? '', attributes: {}, isDefault: true,
+      isActive: true, version: 1, priceOverride: null, costPriceOverride: null, weightOverride: null, heightOverride: null,
+      widthOverride: null, lengthOverride: null, stockQuantity: 0, reservedQuantity: 0,
+    });
+    return ok([productResponse(p)]);
+  }
+
+  const sectionMatch = path.match(/^products\/(\d+)\/(details|pricing|dimensions|category|active|variants\/enable)$/);
+  if (sectionMatch && method === 'PUT') {
+    const p = products.find((x) => x.id === Number(sectionMatch[1]));
+    if (!p) return problem(404, 'Product.NotFound', 'Produto não encontrado.');
+    const section = sectionMatch[2];
+    if (section === 'details') {
+      if (duplicate('slug', body.slug, p.id)) return problem(409, 'Product.DuplicateSlug', 'Já existe um produto com este slug.');
+      if (duplicate('sku', body.sku, p.id)) return problem(409, 'Product.DuplicateSku', 'Já existe um produto com este SKU.');
+    }
+    if (section === 'pricing' && Number(body.costPrice) > Number(body.price)) {
+      return problem(400, 'Validation.InvalidInput', 'Os dados informados são inválidos.');
+    }
+    if (section === 'variants/enable') {
+      const standard = productVariants(p).find((v) => v.isDefault);
+      if (!p.hasVariants && (standard.stockQuantity > 0 || standard.reservedQuantity > 0)) {
+        return problem(400, 'Validation.InvalidInput', 'Os dados informados são inválidos.');
+      }
+      p.hasVariants = true;
+    } else {
+      Object.assign(p, body);
+    }
+    p.updatedAt = nowIso();
+    return ok(productResponse(p));
+  }
+
+  const variantMatch = path.match(/^products\/(\d+)\/variants(?:\/(\d+))?(?:\/(pricing|dimensions))?$/);
+  if (variantMatch) {
+    const p = products.find((x) => x.id === Number(variantMatch[1]));
+    if (!p) return problem(404, 'Product.NotFound', 'Produto não encontrado.');
+    const [, , variantId, section] = variantMatch;
+    if (!variantId && method === 'GET') return ok(productVariants(p).map((v) => variantResponse(p, v)));
+    const others = (exceptId) => productVariants(p).filter((v) => !v.isDefault && v.id !== exceptId);
+    const conflict = (details, exceptId) => {
+      if (allVariants.some((v) => v.id !== exceptId && v.sku.toLowerCase() === String(details.sku).toLowerCase())) {
+        return problem(409, 'ProductVariant.DuplicateSku', 'Já existe um SKU com este código.');
+      }
+      const keys = Object.keys(details.attributes ?? {}).sort().join('|');
+      const siblings = others(exceptId);
+      if (siblings.length && siblings.some((v) => Object.keys(v.attributes).sort().join('|') !== keys)) {
+        return problem(400, 'ProductVariant.OptionSchema', 'Todas as variantes precisam usar as mesmas opções.');
+      }
+      const combo = JSON.stringify(Object.entries(details.attributes ?? {}).sort());
+      if (siblings.some((v) => JSON.stringify(Object.entries(v.attributes).sort()) === combo)) {
+        return problem(409, 'ProductVariant.DuplicateCombination', 'Já existe uma variante com esta combinação.');
+      }
+      return null;
+    };
+    if (!variantId && method === 'POST') {
+      if (!p.hasVariants) return problem(409, 'Product.VariantsDisabled', 'Habilite as variantes do produto primeiro.');
+      const error = conflict(body.details);
+      if (error) return error;
+      const v = {
+        id: nextIdOf(allVariants), productId: p.id, ...body.details, sku: body.details.sku.toUpperCase(), isDefault: false, version: 1,
+        priceOverride: body.pricing?.price ?? null, costPriceOverride: body.pricing?.costPrice ?? null,
+        ...Object.fromEntries(DIMENSIONS.map((k) => [`${k}Override`, body.dimensions?.[k] ?? null])),
+        stockQuantity: 0, reservedQuantity: 0,
+      };
+      allVariants.push(v);
+      return ok(variantResponse(p, v));
+    }
+    const v = allVariants.find((x) => x.id === Number(variantId) && x.productId === p.id);
+    if (!v) return problem(404, 'ProductVariant.NotFound', 'Variante não encontrada.');
+    if (v.isDefault && method !== 'GET') return problem(400, 'ProductVariant.DefaultProtected', 'O SKU padrão não pode ser alterado.');
+    if (method === 'DELETE') {
+      if (v.stockQuantity > 0 || v.reservedQuantity > 0) return problem(400, 'Validation.InvalidInput', 'Os dados informados são inválidos.');
+      d['store/product-variants'] = allVariants.filter((x) => x !== v);
+      return ok(true);
+    }
+    if (method === 'PUT' && section === 'pricing') {
+      Object.assign(v, { priceOverride: body.price ?? null, costPriceOverride: body.costPrice ?? null });
+    } else if (method === 'PUT' && section === 'dimensions') {
+      DIMENSIONS.forEach((k) => { v[`${k}Override`] = body[k] ?? null; });
+    } else if (method === 'PUT') {
+      const error = conflict(body, v.id);
+      if (error) return error;
+      Object.assign(v, { ...body, sku: body.sku.toUpperCase() });
+    }
+    v.version += 1;
+    return ok(variantResponse(p, v));
+  }
+  return null;
+}
+
+function storeBackoffice(method, path, body, who, query) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
   if (path === 'auth/login' && method === 'POST') {
@@ -657,6 +828,8 @@ function storeBackoffice(method, path, body, who) {
   }
   const team = teamRoutes(method, path, body);
   if (team) return team;
+  const catalog = catalogRoutes(method, path, body, query);
+  if (catalog) return catalog;
 
   // Task 19 (ainda não existe no back-end): movimentação de estoque.
   if (path === 'products/adjust-stock' && method === 'POST') {
@@ -703,7 +876,8 @@ const isStorefrontSlug = (slug) => /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(slug
  * @returns {{ status: number, data: unknown }}
  */
 export function mockFetch(method, url, body, headers) {
-  const path = url.split('?')[0];
+  const [path, search = ''] = url.split('?');
+  const query = new URLSearchParams(search);
   const who = identity(headers);
   // Mesmo caminho duplo do Gateway: /api/<serviço>/api/<rota>.
   const match = path.match(/^\/api\/(drop|store)\/api\/(.+)$/);
@@ -728,7 +902,7 @@ export function mockFetch(method, url, body, headers) {
   if (rest.startsWith('storefront/')) return problem(404, 'Enterprise.Unavailable', 'Loja indisponível.');
 
   if (service === 'store') {
-    const special = storeBackoffice(method, rest, body, who);
+    const special = storeBackoffice(method, rest, body, who, query);
     if (special) return special;
   }
   if (service === 'drop') {

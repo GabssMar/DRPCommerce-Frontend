@@ -156,6 +156,21 @@ export function createSeed(now = Date.now()) {
     })),
   ];
 
+  // SKUs (task 33): o produto simples tem só o padrão; o moletom tem tamanhos.
+  const variant = (id, p, name, sku, attributes, isDefault, stockQuantity, priceOverride = null) => ({
+    id, productId: p.id, name, sku, barCode: '', attributes, isDefault, isActive: true, version: 1,
+    priceOverride, costPriceOverride: null, weightOverride: null, heightOverride: null, widthOverride: null, lengthOverride: null,
+    stockQuantity, reservedQuantity: 0,
+  });
+  db['store/product-variants'] = db['store/products'].map((p) => variant(p.id * 10, p, 'Padrão', p.sku, {}, true, p.id === 103 ? 0 : p.stockQuantity));
+  const hoodie = db['store/products'].find((p) => p.id === 103);
+  hoodie.hasVariants = true;
+  db['store/product-variants'].push(
+    variant(1031, hoodie, 'P', 'VLC-MOL-103-P', { Tamanho: 'P' }, false, 6),
+    variant(1032, hoodie, 'M', 'VLC-MOL-103-M', { Tamanho: 'M' }, false, 8),
+    variant(1033, hoodie, 'G', 'VLC-MOL-103-G', { Tamanho: 'G' }, false, 4, 229.90),
+  );
+
   db['store/services'] = [
     [1, 2, 'Personalização de nome', 29.90, 1440, true],
     [2, 1, 'Higienização de tênis', 59.90, 4320, true],
