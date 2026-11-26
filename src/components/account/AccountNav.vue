@@ -5,6 +5,7 @@ import { href, route } from '../../router';
 const SECTIONS = [
   { label: 'Meus dados', path: '/conta', names: ['account'] },
   { label: 'Pedidos', path: '/conta/pedidos', names: ['account-orders', 'account-order'] },
+  { label: 'Endereços', path: '/conta/enderecos', names: ['account-addresses'] },
   { label: 'Notificações', path: '/conta/notificacoes', names: ['account-notifications'] },
 ];
 </script>
