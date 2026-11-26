@@ -10,8 +10,6 @@
 
 const ENTERPRISE_ID = 1;
 export const SIGNED_IN_CUSTOMER_ID = 1;
-// E-mail do cliente 1 (Camila Duarte): o login do mock aceita qualquer senha.
-export const MOCK_CUSTOMER_EMAIL = 'camila.duarte@exemplo.com';
 export const SIGNED_IN_EMPLOYEE_ID = 1;
 
 const MINUTE = 60 * 1000;
