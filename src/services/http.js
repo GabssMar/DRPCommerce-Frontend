@@ -3,7 +3,6 @@ import { ApiError, networkError, timeoutError } from './api-error';
 import { logRequest } from './request-log';
 import { getAccessToken, tokenClaims } from './session';
 import { syncServerClock } from './clock';
-import { mockFetch } from './mock/server';
 
 // Cliente HTTP único. Nenhuma tela chama fetch: tudo passa por request().
 //
@@ -55,7 +54,12 @@ const httpTransport = async (method, url, { headers, body }) => {
   }
 };
 
+// O servidor do mock só é carregado no modo mock. Em VITE_API_MODE=http o Vite troca a
+// condição por `false` no build e deixa o mock (seed, dados de exemplo) fora do pacote.
+const loadMock = import.meta.env?.VITE_API_MODE === 'http' ? null : () => import('./mock/server');
+
 const mockTransport = async (method, url, { headers, body }) => {
+  const { mockFetch } = await loadMock();
   await delay(MOCK_LATENCY_MS);
   // Cópia: o mock nunca recebe nem devolve referência viva da tela.
   const payload = body === undefined ? undefined : JSON.parse(JSON.stringify(body));

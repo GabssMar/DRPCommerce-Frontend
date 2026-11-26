@@ -3,10 +3,9 @@ import { computed, reactive, ref, watch } from 'vue';
 import { AlertCircle, ArrowLeft, CheckCircle } from '@lucide/vue';
 import { href, navigate } from '../../router';
 import { useAction } from '../../composables/useAsync';
-import { IS_MOCK } from '../../services/config';
+import { IS_MOCK, MOCK_CUSTOMER_EMAIL } from '../../services/config';
 import { authNotice } from '../../services/session';
 import { loginCustomer, registerCustomer } from '../../services/auth';
-import { MOCK_CUSTOMER_EMAIL } from '../../services/mock/seed';
 import { STATES } from '../../services/status';
 import { fromCalendarInput } from '../../services/format';
 

@@ -9,6 +9,10 @@ const env = import.meta.env ?? {};
 export const API_MODE = env.VITE_API_MODE === 'http' ? 'http' : 'mock';
 export const IS_MOCK = API_MODE === 'mock';
 
+// Dica da tela de login no modo mock (cliente 1 do seed; o login do mock aceita qualquer senha).
+// Fica aqui, e não em mock/seed.js, para a tela não puxar o seed para o build de produção.
+export const MOCK_CUSTOMER_EMAIL = import.meta.env?.VITE_API_MODE === 'http' ? '' : 'camila.duarte@exemplo.com';
+
 // O front chama sempre o Gateway. O Gateway remove o prefixo do serviço
 // (/api/drop ou /api/store) e os controllers ficam em /api/..., então o caminho
 // externo tem /api duas vezes: /api/store/api/storefront/store.
