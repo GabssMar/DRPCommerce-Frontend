@@ -65,21 +65,23 @@ frontend/
 │   │   ├── *.vue          portal de drops, detalhe, fila, checkout do drop, vitrine, sacola,
 │   │   │                  checkout da vitrine, landing page, painel de simulação
 │   │   ├── drop/          DropRegistration (inscrição) · DropWaitlist (lista de espera)
-│   │   ├── account/       CustomerAuth (login/cadastro) · AccountProfile · AccountOrders · AccountNotifications
+│   │   ├── account/       CustomerAuth (login/cadastro) · AccountProfile · AccountOrders · AccountNotifications · AccountAddresses
 │   │   ├── admin/         painel do lojista: AdminApp (shell com menu lateral) + uma tela por área
 │   │   └── ui/            StatusBadge · LoadState · PaginationNav · ModalDialog · StepsBar
-│   ├── composables/       useAsync/useAction (estados de carga e erro) · useNow (relógio) · useBag (sacola)
+│   ├── composables/       useAsync/useAction (estados de carga e erro) · useNow (relógio) · useBag (fachada do carrinho do servidor)
 │   └── services/          TODA a comunicação com o back (nenhum componente chama fetch)
 │       ├── config.js      lê o .env: modo mock/http, prefixos das APIs, flag do painel
 │       ├── http.js        cliente HTTP único: token, renovação no 401, envelope Result<T>, erros, timeout
 │       ├── auth.js · session.js   login/cadastro/logout do cliente e da equipe, tokens em memória
 │       ├── resources.js   CRUD genérico do back (get-all, add, update…) e tradução entidade ↔ comando
 │       ├── client-api.js  funções das telas do cliente (conta, inscrição, lista de espera, pedidos, checkout)
+│       ├── storefront-api.js  catálogo público da vitrine (busca, categorias, produto por slug)
+│       ├── variants.js    escolha de SKU (grupos de opções, combinação esgotada ou inexistente)
 │       ├── admin-api.js   funções do painel
 │       ├── status.js · format.js · sales.js · paging.js · api-error.js · request-log.js
-│       ├── api.js         SIMULADOR ANTIGO (portal, detalhe, fila, checkout do drop e catálogo da vitrine).
-│       │                  Sai quando as tasks 16–18 forem feitas
+│       ├── clock.js · cpf.js  hora do servidor (fases do drop) · CPF da fila
 │       └── mock/          seed.js (dados de exemplo) + server.js (servidor falso nas MESMAS rotas do back)
+│                          + catalog.js (catálogo público com SKUs) + addresses.js (endereços do cliente)
 ├── design-system/         tokens, CSS, specs de componentes, padrões de tela, preview.html
 │   └── migration/tasks/   uma task por funcionalidade (00–43) + contrato da API + pendências do back
 ├── scripts/ds-check.js    verificação do DS (roda no pre-commit)
@@ -121,20 +123,23 @@ frontend/
 
 ## 5. O que vem do back-end e o que é mockado
 
-### 5.1 Telas que ainda **não falam com o back em nenhum modo** (simulador `services/api.js`)
+### 5.1 Drop na loja (tasks 16–18, feitas em mock em 25/11)
 
-Mesmo com `VITE_API_MODE=http`, estas telas usam dados inventados no navegador:
+O simulador antigo (`services/api.js` e o `CheckoutModal.vue`) saiu: portal, detalhe, fila e compra do drop usam as rotas públicas e do cliente do DROP (`storefront/{slug}/drop/...`), no mesmo formato em `mock` e `http`.
 
-| Tela | Componentes | Task que resolve |
+| Tela | Componentes | Rotas |
 |---|---|---|
-| Portal de drops (lista de eventos) | `EventPortal.vue` | 16 |
-| Detalhe do drop, countdown, barra de estoque | `ProductDetails.vue`, `Countdown.vue`, `StockProgress.vue` | 16 |
-| Fila prioritária (posição, avanço) | `QueueStatus.vue` | 17 |
-| Checkout do drop | `CheckoutModal.vue` | 18 |
-| Catálogo da vitrine e detalhe do produto | `StoreShowcase.vue`, `StoreProductDetail.vue` (dados carregados em `App.vue` via `api.getStoreProducts()`) | 29 |
-| Painel de simulação (só em dev) | `SimulationPanel.vue` | ferramenta de teste, some com o `api.js` |
+| Portal de drops | `EventPortal.vue` | `GET drop/events` |
+| Detalhe, countdown, estoque | `ProductDetails.vue`, `Countdown.vue`, `StockProgress.vue` | `GET drop/events/{id}` (participações, variações, saldo) |
+| Fila prioritária | `QueueStatus.vue` + `useDropQueue.js` | `POST/GET drop/events/{id}/queue` (CPF, sessão de 15 min) |
+| Compra do drop | `drop/DropPurchase.vue` | `POST drop/events/{id}/reservations`, `POST drop/reservations/{id}/checkout`, `GET drop/purchases/{id}` |
+| Painel de simulação (só em dev) | `SimulationPanel.vue` | mexe no relógio do mock (`services/clock.js`), na fila, no estoque e no pagamento (`mockDropControl` em `mock/server.js`) |
 
-A **sacola** (`useBag.js`) fica só no `localStorage` do navegador e não vai ao back (task 30 leva para o servidor).
+A hora das fases e contagens vem de `services/clock.js` (`serverNow()`): no modo http, corrigida pelo cabeçalho `Date` do Gateway; no mock, com o deslocamento do painel. O pagamento do drop é confirmado pelo back (webhook do Mercado Pago); a tela só acompanha `GET drop/purchases/{id}`.
+
+A **vitrine** já usa o catálogo público do back (task 29, `services/storefront-api.js`): busca paginada, categorias e variantes por SKU, com filtros na URL. A **sacola** é o carrinho do servidor (task 30, `storefront/{slug}/cart`): `useBag.js` é a fachada e o estado é o último carrinho devolvido pelo back, com preço, disponibilidade, seleção e totais calculados lá. Item que esgotou vai para "Precisa da sua decisão" (remover, ajustar a quantidade ou aguardar reposição) e sai da compra. O cupom é uma prévia (`GET cart?couponCode`), que não ocupa uso. Sem login, a sacola fica no `localStorage` e vai para o servidor no login. O **checkout** (task 32) é uma chamada só, `POST storefront/{slug}/checkout`, que compra os itens marcados do carrinho: o front escolhe endereço (salvo, do cadastro ou novo), frete (cotação de `checkout/shipping-quotes` ou retirada na loja), forma de pagamento e cupom, e o servidor calcula tudo. A chave idempotente fica na `sessionStorage` até o pedido sair, então clique duplo, F5 ou timeout não duplicam o pedido. "Meus pedidos" usa `storefront/orders` (número comercial, cobrança, prazo) e cancela por `POST storefront/orders/{id}/cancel`, só com o pedido aguardando pagamento.
+
+**Vitrine e Drop não dividem produto.** Um produto é da vitrine **ou** do Drop: o back transfere o saldo de um módulo para o outro (produto da vitrine arquivado e marcado `isTransferredToDrop`; catálogo próprio no DROP) e nunca deixa as mesmas unidades à venda nos dois. O mock segue essa regra desde 25/11 (os drops usam os produtos 109–112, arquivados na vitrine). A tela do painel para transferir e devolver é a task 44.
 
 ### 5.2 Telas que usam a camada `services/` (mock ou back real, conforme o modo)
 
@@ -156,12 +161,13 @@ Legenda: ✅ testado com o back real · ⚠️ funciona, mas usa rota inadequada
 
 **Cliente (Minha conta, inscrição, lista de espera, checkout da vitrine)**
 
-Hoje **tudo do cliente está bloqueado pelo Gateway** (pendência 1 do back: o Gateway perde o Host e toda rota `storefront/*` responde 404 `Enterprise.Unavailable`). Contornando o Gateway, as rotas abaixo foram validadas:
+Desde 23/11 o back identifica a loja pelo **slug no caminho** (`storefront/{slug}/...`), não mais pelo Host, o que elimina o 404 `Enterprise.Unavailable` que o Gateway causava. O front monta o caminho com `storefrontPath()` (`services/config.js`); o slug vem de `VITE_STORE_SLUG` ou do subdomínio (`teste.stores.localhost` → `teste`). As rotas abaixo foram validadas em 16/11 contornando o Gateway e ainda precisam ser testadas de novo com o slug:
 
 | Funcionalidade | Rota | Situação |
 |---|---|---|
-| Cadastro, login, troca de senha, logout | `storefront/auth/*` | ✅ só sem o Gateway |
-| Perfil (ver, editar, desativar) | `storefront/me` | ✅ só sem o Gateway |
+| Cadastro, login, troca de senha, logout | `storefront/auth/*` | ✅ (retestar com slug) |
+| Perfil (ver, editar, desativar) | `storefront/me` | ✅ (retestar com slug) |
+| Endereços de entrega (listar, criar, editar, padrão, excluir) | `storefront/me/addresses` | rota própria; feita em mock, não testada no back |
 | Lista de drops, inscrição | `storefront/drop/events`, `.../events/{id}/register` | rota própria do cliente |
 | Pedidos e notificações (lista) | `storefront/orders`, `storefront/drop/orders`, `storefront/drop/notifications` | rota própria; detalhe completo vem do CRUD ⚠️ |
 | CPF do cliente | CRUD `documents` com token de cliente | ❌ responde 401; falta `storefront/me/documents` |
@@ -188,14 +194,14 @@ Cada arquivo em `design-system/migration/tasks/NN-*.md` é a descrição complet
 
 | # | Task | Depende de | Observação |
 |---|---|---|---|
-| 16 | Portal, detalhe e estoque do drop com dados reais | back 11 | dá para fazer em mock |
-| 17 | Fila com dados reais | back 12, 13 | dá para fazer em mock |
-| 18 | Checkout do drop com dados reais | back 14, task 17 | ao final, remover `services/api.js` e `SimulationPanel.vue` |
+| 16 | Portal, detalhe e estoque do drop com dados reais | back 11, task 44 | feita em mock em 25/11 (`storefront/{slug}/drop/events(/{id})`, hora do servidor em `services/clock.js`); falta validar no back real |
+| 17 | Fila com CPF e sessão de compra de 15 min | back 12, 13, task 16 | feita em mock em 25/11 (`useDropQueue`, `mock/drop-queue.js`); falta validar no back real |
+| 18 | Reserva por variação e pagamento do drop | back 14, tasks 16 e 17 | feita em mock em 25/11 (`drop/DropPurchase.vue`); simulador `api.js` removido; falta validar no back real |
 | 28 | Sessão completa: renovação entre abas, sessões ativas, senha | 27 ✅ | login/cadastro já existem |
-| 29 | Catálogo público: busca paginada, categorias, variantes por SKU | 27 ✅ | tira a vitrine do simulador |
-| 30 | Carrinho no servidor + prévia de cupom | 28, 29 | substitui o `useBag` local |
-| 31 | Endereços de entrega do cliente | 27, 28 | |
-| 32 | Checkout real da vitrine (idempotência, endereço, cancelamento) | 30, 31 | substitui o `placeStoreOrder` em 4 chamadas |
+| 29 | Catálogo público: busca paginada, categorias, variantes por SKU | 27 ✅ | feita em mock; falta validar no back real |
+| 30 | Carrinho no servidor + prévia de cupom | 28, 29 | feita em mock (`#/sacola`); falta validar no back real |
+| 31 | Endereços de entrega do cliente | 27, 28 | feita em mock (`#/conta/enderecos`); falta validar no back real |
+| 32 | Checkout real da vitrine (idempotência, endereço, cancelamento) | 30, 31 | feita em mock (`#/checkout`, `#/conta/pedidos`); falta validar no back real |
 | 33 | Admin: produtos e variantes (SKUs) | 27 ✅ | |
 | 34 | Admin: estoque por SKU (saldo, ajuste com versão, movimentações) | 33 | |
 | 35 | Admin: categorias em árvore | 27 ✅ | |
@@ -207,6 +213,7 @@ Cada arquivo em `design-system/migration/tasks/NN-*.md` é a descrição complet
 | 41 | Admin: domínio próprio (verificação TXT) | 27, 40 | |
 | 42 | Aparência: catálogo de temas, renderer e editor | 27, 40 | |
 | 43 | Pagamento (Mercado Pago) e frete (Melhor Envio) | 32, 37 | **bloqueada pelo back** |
+| 44 | Catálogo do Drop e transferência entre vitrine e Drop | 27 | um produto é da vitrine **ou** do Drop, nunca dos dois; combinar com quem faz 33 e 34 |
 
 Paralelismo: 29–32 (vitrine), 33–39 (admin) e 42 podem correr ao mesmo tempo. 16, 17 e 18 mexem em `App.vue`; evite duas pessoas nelas ao mesmo tempo.
 
@@ -216,13 +223,12 @@ Limpeza pendente: `src/assets/react.svg` e `src/assets/vite.svg` são resto do p
 
 | Prioridade | Pendência | Trava |
 |---|---|---|
-| **Bloqueante** | Gateway perde o Host: `UseForwardedHeaders` no Store/Drop aceitando `X-Forwarded-Host` só do Gateway | toda a área do cliente no modo http |
 | Alta | Rotas `storefront/*` para CPF, lista de espera, canais de aviso, cancelar inscrição, excluir notificação | Minha conta, lista de espera |
 | Alta | Task 11: evento por slug, estoque por evento | task 16 |
 | Alta | Task 12 (sair/restaurar fila) e 13 (admissão e expiração) | task 17 |
 | Alta | Task 14: reserva, cupom e venda do drop integradas ao Store | task 18 |
 | Média | Task 19: `sales-summary`, estoque em `Product` | dashboard, estoque no catálogo |
-| Média | Rate limit de autenticação por IP (atrás do Gateway vira um limite só para a loja) | login em produção |
+| Média | Rate limit de autenticação por IP: confirmar se o back lê o IP real do `X-Forwarded-For` atrás do Gateway | login em produção |
 | Baixa | 429 fora do padrão ProblemDetails e sem `Retry-After` | mensagem de "tente de novo em X s" |
 
 Detalhes e como conferir cada uma: `PENDENCIAS-BACKEND-2026-11-16.md`.

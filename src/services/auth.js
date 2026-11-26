@@ -1,14 +1,14 @@
-import { STORE_BASE } from './config';
+import { STORE_BASE, storefrontPath } from './config';
 import { onUnauthorized, request } from './http';
 import { clearSession, getAccessToken, REALMS, setSession } from './session';
 
 // Login, cadastro e renovação. O back-end exige CSRF (cabeçalho X-CSRF-TOKEN)
 // nas rotas de autenticação e grava o refresh em cookie HttpOnly.
-//   cliente: /api/store/api/storefront/auth/*
+//   cliente: /api/store/api/storefront/{slug}/auth/*
 //   equipe:  /api/store/api/auth/*
 
 const AUTH_BASE = {
-  [REALMS.storefront]: `${STORE_BASE}/storefront/auth`,
+  [REALMS.storefront]: storefrontPath(STORE_BASE, 'auth'),
   [REALMS.backoffice]: `${STORE_BASE}/auth`,
 };
 
@@ -70,7 +70,7 @@ export const logoutCustomer = async () => {
 // com o PasswordHasher dele, então um hash feito no navegador nunca bateria.
 // Sucesso (204) apaga o cookie de refresh e invalida as sessões no back.
 export const deleteCustomerAccount = async (currentPassword) => {
-  await request('DELETE', `${STORE_BASE}/storefront/me`, {
+  await request('DELETE', storefrontPath(STORE_BASE, 'me'), {
     realm: REALMS.storefront,
     body: { currentPassword },
     headers: await csrfHeaders(REALMS.storefront),

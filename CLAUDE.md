@@ -47,13 +47,13 @@ src/
 ├── App.vue               shell da loja; #/admin/* monta components/admin/AdminApp.vue
 ├── components/
 │   ├── *.vue             portal, detalhe do drop, fila, vitrine, sacola, StoreCheckout (C10)
-│   ├── drop/             DropRegistration (C3) · DropWaitlist (C6)
+│   ├── drop/             DropRegistration (C3) · DropWaitlist (C6) · DropPurchase (reserva e pagamento do drop)
 │   ├── account/          AccountProfile (C11) · AccountOrders (C12) · AccountNotifications (C13)
 │   ├── admin/            painel da loja (E1–E13), AdminApp é o shell com rail
 │   └── ui/               StatusBadge · LoadState · PaginationNav · ModalDialog · StepsBar
-├── composables/          useAsync/useAction (estados de carga) · useNow · useBag
+├── composables/          useAsync/useAction (estados de carga) · useNow/useServerNow · useBag · useDropQueue
 └── services/
-    ├── api.js            simulador antigo (portal, detalhe, vitrine) — sai nas tasks 15–18
+    ├── clock.js · cpf.js  hora do servidor (fases do drop) · CPF da fila
     ├── http.js · auth.js · resources.js · client-api.js · admin-api.js · status.js · sales.js
     └── mock/             seed + servidor falso nas MESMAS rotas do back (VITE_API_MODE=mock)
 design-system/            o Design System (docs + CSS + tokens)

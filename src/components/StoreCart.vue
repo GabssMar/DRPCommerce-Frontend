@@ -1,32 +1,102 @@
 <script setup>
-import { computed } from 'vue';
-import { Minus, Plus, Trash2, ShoppingBag, Package, AlertCircle, CheckCircle } from '@lucide/vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { AlertCircle, BellRing, Minus, Package, Plus, ShoppingBag, Trash2 } from '@lucide/vue';
+import { MAX_PER_ORDER, useBag } from '../composables/useBag';
+import { useAction } from '../composables/useAsync';
+import { href } from '../router';
+import { brl } from '../services/format';
+import LoadState from './ui/LoadState.vue';
 
-// Sacola da vitrine. Os totais aqui são estimativa; o pedido confirmado traz os valores do servidor.
-const props = defineProps({
-  // [{ product, quantity }]
-  lines: { type: Array, default: () => [] },
-  isSubmitting: { type: Boolean, default: false },
-  error: { type: String, default: '' },
-  order: { type: Object, default: null },
-});
+// Sacola da vitrine (task 30): carrinho do servidor (storefront/{slug}/cart).
+// Preço, disponibilidade, seleção e totais vêm do back; a tela não soma nada.
+// Itens que ficaram sem estoque vão para "Precisa da sua decisão" (remover ou
+// aguardar reposição) e saem da compra.
+const emit = defineEmits(['checkout', 'continue-shopping']);
 
-const emit = defineEmits(['update-quantity', 'remove', 'checkout', 'select-product', 'continue-shopping']);
+const {
+  cart, couponCode, isLoading, error, migrationNotice,
+  loadCart, updateQuantity, removeItems, setSelection, awaitStock, applyCoupon, removeCoupon,
+} = useBag();
 
-const MAX_PER_ORDER = 10;
-const SHIPPING_ESTIMATE = 20.00;
+onMounted(loadCart);
 
-const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const items = computed(() => cart.value?.items ?? []);
+const summary = computed(() => cart.value?.summary ?? null);
+const ready = computed(() => items.value.filter((i) => i.availability === 'available'));
+const decisions = computed(() => items.value.filter((i) => i.requiresDecision));
+const waiting = computed(() => items.value.filter((i) => i.isAwaitingStock && i.availability !== 'available'));
 
-const itemCount = computed(() => props.lines.reduce((sum, l) => sum + l.quantity, 0));
-const subTotal = computed(() => props.lines.reduce((sum, l) => sum + l.product.price * l.quantity, 0));
-const total = computed(() => subTotal.value + SHIPPING_ESTIMATE);
-const maxFor = (line) => Math.min(line.product.stockQuantity, MAX_PER_ORDER);
+const allSelected = computed(() => ready.value.length > 0 && ready.value.every((i) => i.isSelected));
+const someSelected = computed(() => ready.value.some((i) => i.isSelected) && !allSelected.value);
 
-const setQuantity = (line, quantity) => {
-  if (quantity < 1 || quantity > maxFor(line)) return;
-  emit('update-quantity', { productId: line.product.id, quantity });
+// Erro de uma operação aparece no próprio item (400/409 do back), sem derrubar a tela.
+const itemErrors = reactive({});
+const busy = ref(null);
+const run = async (itemId, operation) => {
+  delete itemErrors[itemId];
+  busy.value = itemId;
+  try {
+    await operation();
+  } catch (err) {
+    itemErrors[itemId] = err?.message ?? 'Não foi possível atualizar o item.';
+  } finally {
+    busy.value = null;
+  }
 };
+
+const setQuantity = (item, quantity) => {
+  if (quantity < 1 || quantity > Math.max(MAX_PER_ORDER, item.quantity)) return;
+  run(item.id, () => updateQuantity(item.id, quantity));
+};
+const remove = (item) => run(item.id, () => removeItems([item.id]));
+const toggle = (item) => run(item.id, () => setSelection([item.id], !item.isSelected));
+const wait = (item) => run(item.id, () => awaitStock(item.id));
+const adjust = (item) => run(item.id, () => updateQuantity(item.id, item.availableQuantity));
+
+const selectAll = useAction(() => setSelection(null, !allSelected.value));
+
+const reasonOf = (item) => {
+  if (item.availability === 'insufficient') {
+    return `Só ${item.availableQuantity === 1 ? 'resta 1 unidade' : `restam ${item.availableQuantity} unidades`}; você tem ${item.quantity} na sacola.`;
+  }
+  if (item.availability === 'out-of-stock') return 'Esgotado no momento.';
+  return 'Este produto não está mais à venda.';
+};
+
+const detailsOf = (item) => [item.variantLabel, item.sku && `SKU ${item.sku}`].filter(Boolean).join(' · ');
+const productLink = (item) => (item.productSlug ? href(`/vitrine/p/${item.productSlug}`) : null);
+
+// Cupom: prévia pelo GET cart?couponCode. Não ocupa uso; o desconto é confirmado no pagamento.
+const couponInput = ref(couponCode.value);
+watch(couponCode, (code) => {
+  if (code) couponInput.value = code;
+});
+const couponMessage = ref('');
+const coupon = useAction(async () => {
+  couponMessage.value = '';
+  const preview = await applyCoupon(couponInput.value);
+  if (!preview?.isValid) couponMessage.value = preview?.message ?? 'Cupom inválido.';
+});
+const clearCoupon = useAction(async () => {
+  couponMessage.value = '';
+  couponInput.value = '';
+  await removeCoupon();
+});
+const appliedCoupon = computed(() => (summary.value?.coupon?.isValid ? summary.value.coupon : null));
+// Cupom aplicado que deixou de valer (mudou a seleção): o back manda o motivo.
+const couponWarning = computed(() => (couponCode.value && summary.value?.coupon && !summary.value.coupon.isValid
+  ? summary.value.coupon.message : ''));
+
+const blockers = computed(() => {
+  const s = summary.value;
+  if (!s) return [];
+  const list = [];
+  if (!s.selectedItems && items.value.length) list.push('Marque ao menos um item para comprar.');
+  if (!s.meetsMinOrderValue) list.push(`O pedido mínimo da loja é ${brl(s.minOrderValue)}.`);
+  if (!s.withinItemLimit) list.push(`A loja aceita até ${s.maxItemsPerOrder} unidades por pedido.`);
+  if (s.hasUnavailableSelectedItems) list.push('Há item marcado que ficou indisponível.');
+  return list;
+});
 </script>
 
 <template>
@@ -41,84 +111,36 @@ const setQuantity = (line, quantity) => {
         </h1>
       </div>
       <span
-        v-if="!order && lines.length"
+        v-if="items.length"
         class="ds-badge"
-      >{{ itemCount }} {{ itemCount === 1 ? 'item' : 'itens' }}</span>
+      >{{ items.length }} {{ items.length === 1 ? 'produto' : 'produtos' }}</span>
     </div>
 
-    <!-- Pedido confirmado -->
-    <article
-      v-if="order"
-      class="ds-card ds-animate-in ds-stack--6"
-      aria-live="polite"
+    <p
+      v-if="migrationNotice"
+      class="ds-hint"
+      role="status"
     >
-      <header class="ds-card__header">
-        <div>
-          <h2 class="ds-card__title">
-            Pedido recebido
-          </h2>
-          <p class="ds-card__subtitle">
-            Guarde o número do pedido para acompanhar a entrega.
-          </p>
-        </div>
-        <span class="ds-badge ds-badge--success">
-          <CheckCircle
-            :size="16"
-            :stroke-width="1.5"
-            aria-hidden="true"
-          />
-          Confirmado
-        </span>
-      </header>
-      <dl class="ds-stack--3">
-        <div class="ds-cluster ds-cluster--between">
-          <dt class="ds-text-secondary">
-            Pedido
-          </dt>
-          <dd><code>#{{ order.id }}</code></dd>
-        </div>
-        <div
-          v-for="item in order.items"
-          :key="item.productId"
-          class="ds-cluster ds-cluster--between"
-        >
-          <dt class="ds-text-secondary">
-            {{ item.quantity }}× {{ item.name }}
-          </dt>
-          <dd class="ds-numeric">
-            {{ brl.format(item.unitPrice * item.quantity) }}
-          </dd>
-        </div>
-        <div class="ds-cluster ds-cluster--between">
-          <dt class="ds-text-secondary">
-            Frete
-          </dt>
-          <dd class="ds-numeric">
-            {{ brl.format(order.shippingCost) }}
-          </dd>
-        </div>
-        <hr class="ds-divider">
-        <div class="ds-cluster ds-cluster--between">
-          <dt>Total</dt>
-          <dd class="ds-numeric">
-            {{ brl.format(order.totalAmount) }}
-          </dd>
-        </div>
-      </dl>
-      <footer class="ds-card__footer">
-        <button
-          type="button"
-          class="ds-btn ds-btn--primary ds-btn--block"
-          @click="emit('continue-shopping')"
-        >
-          Continuar comprando
-        </button>
-      </footer>
-    </article>
+      <AlertCircle
+        :size="16"
+        :stroke-width="1.5"
+        aria-hidden="true"
+      />
+      {{ migrationNotice }}
+    </p>
+
+    <LoadState
+      v-if="!cart && (isLoading || error)"
+      class="ds-card"
+      :is-loading="isLoading"
+      :error="error"
+      :lines="5"
+      @retry="loadCart"
+    />
 
     <!-- Vazia -->
     <article
-      v-else-if="!lines.length"
+      v-else-if="!items.length"
       class="ds-card ds-empty"
     >
       <ShoppingBag
@@ -141,29 +163,42 @@ const setQuantity = (line, quantity) => {
       v-else
       class="ds-grid ds-grid--sidebar"
     >
-      <article class="ds-card ds-stack--5">
-        <h2 class="ds-card__title">
-          Itens
-        </h2>
-        <ul
-          class="ds-stack--5"
-          role="list"
+      <div class="ds-stack--6">
+        <!-- Precisa da sua decisão -->
+        <article
+          v-if="decisions.length"
+          class="ds-card ds-stack--5"
+          aria-labelledby="cart-decisions"
         >
-          <li
-            v-for="(line, index) in lines"
-            :key="line.product.id"
-            class="ds-stack--5"
-          >
-            <hr
-              v-if="index > 0"
-              class="ds-divider"
+          <header class="ds-stack--1">
+            <h2
+              id="cart-decisions"
+              class="ds-card__title"
             >
-            <div class="ds-cluster ds-cluster--between">
+              Precisa da sua decisão
+            </h2>
+            <p class="ds-card__subtitle">
+              Estes itens ficaram sem estoque e não entram na compra.
+            </p>
+          </header>
+          <ul
+            class="ds-stack--5"
+            role="list"
+          >
+            <li
+              v-for="(item, index) in decisions"
+              :key="item.id"
+              class="ds-stack--3"
+            >
+              <hr
+                v-if="index > 0"
+                class="ds-divider"
+              >
               <div class="ds-cluster">
                 <img
-                  v-if="line.product.imageUrl"
+                  v-if="item.imageUrl"
                   class="ds-card__media ds-card__media--product ds-card__media--thumb"
-                  :src="line.product.imageUrl"
+                  :src="item.imageUrl"
                   alt=""
                 >
                 <div
@@ -177,125 +212,368 @@ const setQuantity = (line, quantity) => {
                   />
                 </div>
                 <div class="ds-stack--1">
-                  <button
-                    type="button"
-                    @click="emit('select-product', line.product.id)"
-                  >
-                    {{ line.product.name }}
-                  </button>
-                  <span class="ds-text-xs ds-text-secondary">{{ line.product.category }} · SKU {{ line.product.sku }}</span>
-                  <span class="ds-text-sm ds-text-secondary ds-numeric">{{ brl.format(line.product.price) }} cada</span>
+                  <a
+                    v-if="productLink(item)"
+                    :href="productLink(item)"
+                  >{{ item.productName }}</a>
+                  <span v-else>{{ item.productName }}</span>
+                  <span
+                    v-if="detailsOf(item)"
+                    class="ds-text-xs ds-text-secondary"
+                  >{{ detailsOf(item) }}</span>
+                  <span class="ds-text-sm ds-text-warning">{{ reasonOf(item) }}</span>
                 </div>
               </div>
-
-              <div class="ds-cluster">
-                <div
-                  class="ds-cluster ds-cluster--2"
-                  role="group"
-                  :aria-label="`Quantidade de ${line.product.name}`"
-                >
-                  <button
-                    type="button"
-                    class="ds-icon-btn ds-tap"
-                    :aria-label="`Diminuir quantidade de ${line.product.name}`"
-                    :disabled="line.quantity <= 1"
-                    @click="setQuantity(line, line.quantity - 1)"
-                  >
-                    <Minus
-                      :size="16"
-                      :stroke-width="1.5"
-                      aria-hidden="true"
-                    />
-                  </button>
-                  <output class="ds-numeric">{{ line.quantity }}</output>
-                  <button
-                    type="button"
-                    class="ds-icon-btn ds-tap"
-                    :aria-label="`Aumentar quantidade de ${line.product.name}`"
-                    :disabled="line.quantity >= maxFor(line)"
-                    @click="setQuantity(line, line.quantity + 1)"
-                  >
-                    <Plus
-                      :size="16"
-                      :stroke-width="1.5"
-                      aria-hidden="true"
-                    />
-                  </button>
-                </div>
-                <span class="ds-numeric">{{ brl.format(line.product.price * line.quantity) }}</span>
+              <div class="ds-cluster ds-cluster--2">
                 <button
+                  v-if="item.availability === 'insufficient' && item.availableQuantity > 0"
                   type="button"
-                  class="ds-icon-btn ds-icon-btn--ghost ds-tap"
-                  :aria-label="`Remover ${line.product.name} da sacola`"
-                  @click="emit('remove', line.product.id)"
+                  class="ds-btn ds-btn--secondary ds-btn--sm"
+                  :disabled="busy === item.id"
+                  @click="adjust(item)"
                 >
-                  <Trash2
+                  Ajustar para {{ item.availableQuantity }}
+                </button>
+                <button
+                  v-if="item.availability !== 'unavailable'"
+                  type="button"
+                  class="ds-btn ds-btn--secondary ds-btn--sm"
+                  :disabled="busy === item.id"
+                  @click="wait(item)"
+                >
+                  <BellRing
+                    class="ds-btn__icon"
                     :size="16"
                     :stroke-width="1.5"
                     aria-hidden="true"
                   />
+                  Avisar quando voltar
+                </button>
+                <button
+                  type="button"
+                  class="ds-btn ds-btn--ghost-danger ds-btn--sm"
+                  :disabled="busy === item.id"
+                  @click="remove(item)"
+                >
+                  Remover
                 </button>
               </div>
-            </div>
-          </li>
-        </ul>
-      </article>
+              <span
+                v-if="itemErrors[item.id]"
+                class="ds-error"
+                role="alert"
+              >{{ itemErrors[item.id] }}</span>
+            </li>
+          </ul>
+        </article>
+
+        <!-- Itens disponíveis -->
+        <article
+          v-if="ready.length"
+          class="ds-card ds-stack--5"
+          aria-labelledby="cart-items"
+        >
+          <header class="ds-cluster ds-cluster--between">
+            <h2
+              id="cart-items"
+              class="ds-card__title"
+            >
+              Itens
+            </h2>
+            <label class="ds-check">
+              <input
+                type="checkbox"
+                :checked="allSelected"
+                :indeterminate="someSelected"
+                :disabled="selectAll.isPending.value"
+                @change="selectAll.run()"
+              >
+              <span>Selecionar todos</span>
+            </label>
+          </header>
+          <span
+            v-if="selectAll.error.value"
+            class="ds-error"
+            role="alert"
+          >{{ selectAll.error.value.message }}</span>
+          <ul
+            class="ds-stack--5"
+            role="list"
+          >
+            <li
+              v-for="(item, index) in ready"
+              :key="item.id"
+              class="ds-stack--3"
+            >
+              <hr
+                v-if="index > 0"
+                class="ds-divider"
+              >
+              <div class="ds-cluster ds-cluster--between">
+                <div class="ds-cluster">
+                  <input
+                    class="ds-checkbox"
+                    type="checkbox"
+                    :checked="item.isSelected"
+                    :disabled="busy === item.id"
+                    :aria-label="`Comprar ${item.productName}${item.variantLabel ? ` (${item.variantLabel})` : ''}`"
+                    @change="toggle(item)"
+                  >
+                  <img
+                    v-if="item.imageUrl"
+                    class="ds-card__media ds-card__media--product ds-card__media--thumb"
+                    :src="item.imageUrl"
+                    alt=""
+                  >
+                  <div
+                    v-else
+                    class="ds-card__media ds-card__media--product ds-card__media--thumb ds-card__media--placeholder"
+                    aria-hidden="true"
+                  >
+                    <Package
+                      :size="16"
+                      :stroke-width="1.5"
+                    />
+                  </div>
+                  <div class="ds-stack--1">
+                    <a :href="productLink(item)">{{ item.productName }}</a>
+                    <span
+                      v-if="detailsOf(item)"
+                      class="ds-text-xs ds-text-secondary"
+                    >{{ detailsOf(item) }}</span>
+                    <span class="ds-text-sm ds-text-secondary ds-numeric">{{ brl(item.unitPrice) }} cada</span>
+                    <span
+                      v-if="item.backInStock"
+                      class="ds-badge ds-badge--success"
+                    >Voltou ao estoque</span>
+                  </div>
+                </div>
+
+                <div class="ds-cluster">
+                  <div
+                    class="ds-cluster ds-cluster--2"
+                    role="group"
+                    :aria-label="`Quantidade de ${item.productName}`"
+                  >
+                    <button
+                      type="button"
+                      class="ds-icon-btn ds-tap"
+                      :aria-label="`Diminuir quantidade de ${item.productName}`"
+                      :disabled="item.quantity <= 1 || busy === item.id"
+                      @click="setQuantity(item, item.quantity - 1)"
+                    >
+                      <Minus
+                        :size="16"
+                        :stroke-width="1.5"
+                        aria-hidden="true"
+                      />
+                    </button>
+                    <output class="ds-numeric">{{ item.quantity }}</output>
+                    <button
+                      type="button"
+                      class="ds-icon-btn ds-tap"
+                      :aria-label="`Aumentar quantidade de ${item.productName}`"
+                      :disabled="item.quantity >= MAX_PER_ORDER || (item.tracksStock && item.quantity >= item.availableQuantity) || busy === item.id"
+                      @click="setQuantity(item, item.quantity + 1)"
+                    >
+                      <Plus
+                        :size="16"
+                        :stroke-width="1.5"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
+                  <span class="ds-numeric">{{ brl(item.lineTotal) }}</span>
+                  <button
+                    type="button"
+                    class="ds-icon-btn ds-icon-btn--ghost ds-tap"
+                    :aria-label="`Remover ${item.productName} da sacola`"
+                    :disabled="busy === item.id"
+                    @click="remove(item)"
+                  >
+                    <Trash2
+                      :size="16"
+                      :stroke-width="1.5"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </div>
+              </div>
+              <span
+                v-if="itemErrors[item.id]"
+                class="ds-error"
+                role="alert"
+              >{{ itemErrors[item.id] }}</span>
+            </li>
+          </ul>
+        </article>
+
+        <!-- Aguardando reposição -->
+        <article
+          v-if="waiting.length"
+          class="ds-card ds-stack--4"
+          aria-labelledby="cart-waiting"
+        >
+          <header class="ds-stack--1">
+            <h2
+              id="cart-waiting"
+              class="ds-card__title"
+            >
+              Aguardando reposição
+            </h2>
+            <p class="ds-card__subtitle">
+              Ficam guardados aqui, fora da compra. Quando voltarem, aparecem em Itens.
+            </p>
+          </header>
+          <ul
+            class="ds-stack--3"
+            role="list"
+          >
+            <li
+              v-for="item in waiting"
+              :key="item.id"
+              class="ds-stack--1"
+            >
+              <div class="ds-cluster ds-cluster--between">
+                <div class="ds-stack--1">
+                  <a
+                    v-if="productLink(item)"
+                    :href="productLink(item)"
+                  >{{ item.productName }}</a>
+                  <span v-else>{{ item.productName }}</span>
+                  <span
+                    v-if="detailsOf(item)"
+                    class="ds-text-xs ds-text-secondary"
+                  >{{ detailsOf(item) }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="ds-btn ds-btn--ghost-danger ds-btn--sm"
+                  :disabled="busy === item.id"
+                  @click="remove(item)"
+                >
+                  Remover
+                </button>
+              </div>
+              <span
+                v-if="itemErrors[item.id]"
+                class="ds-error"
+                role="alert"
+              >{{ itemErrors[item.id] }}</span>
+            </li>
+          </ul>
+        </article>
+      </div>
 
       <aside class="ds-card ds-stack--5">
         <h2 class="ds-card__title">
           Resumo
         </h2>
-        <dl class="ds-stack--3">
+
+        <form
+          class="ds-field"
+          @submit.prevent="coupon.run()"
+        >
+          <label
+            class="ds-label"
+            for="cart-coupon"
+          >Cupom de desconto</label>
+          <div class="ds-input-group">
+            <input
+              id="cart-coupon"
+              v-model="couponInput"
+              class="ds-input ds-uppercase"
+              autocomplete="off"
+              :readonly="Boolean(appliedCoupon)"
+              :aria-invalid="couponMessage ? 'true' : undefined"
+              aria-describedby="cart-coupon-status"
+            >
+            <button
+              v-if="appliedCoupon"
+              type="button"
+              class="ds-btn ds-btn--secondary"
+              :disabled="clearCoupon.isPending.value"
+              @click="clearCoupon.run()"
+            >
+              Remover
+            </button>
+            <button
+              v-else
+              type="submit"
+              class="ds-btn ds-btn--secondary"
+              :disabled="!couponInput.trim() || coupon.isPending.value"
+            >
+              Aplicar
+            </button>
+          </div>
+          <span
+            id="cart-coupon-status"
+            :class="couponMessage || couponWarning || coupon.error.value ? 'ds-error' : 'ds-hint'"
+            aria-live="polite"
+          >{{ couponMessage || couponWarning || coupon.error.value?.message
+            || (appliedCoupon ? 'Prévia do desconto: ele é confirmado no pagamento.' : '') }}</span>
+        </form>
+
+        <dl
+          v-if="summary"
+          class="ds-stack--3"
+        >
           <div class="ds-cluster ds-cluster--between">
             <dt class="ds-text-secondary">
-              Subtotal ({{ itemCount }} {{ itemCount === 1 ? 'item' : 'itens' }})
+              Subtotal ({{ summary.selectedQuantity }} {{ summary.selectedQuantity === 1 ? 'item' : 'itens' }})
             </dt>
             <dd class="ds-numeric">
-              {{ brl.format(subTotal) }}
+              {{ brl(summary.subTotal) }}
+            </dd>
+          </div>
+          <div
+            v-if="summary.discountAmount"
+            class="ds-cluster ds-cluster--between"
+          >
+            <dt class="ds-text-secondary">
+              Cupom {{ appliedCoupon?.code }}
+            </dt>
+            <dd class="ds-numeric ds-text-success">
+              − {{ brl(summary.discountAmount) }}
             </dd>
           </div>
           <div class="ds-cluster ds-cluster--between">
             <dt class="ds-text-secondary">
-              Frete (estimado)
+              Frete
             </dt>
-            <dd class="ds-numeric">
-              {{ brl.format(SHIPPING_ESTIMATE) }}
+            <dd class="ds-text-secondary">
+              no checkout
             </dd>
           </div>
           <hr class="ds-divider">
           <div class="ds-cluster ds-cluster--between">
             <dt>Total</dt>
             <dd class="ds-stat__value ds-numeric">
-              {{ brl.format(total) }}
+              {{ brl(summary.total) }}
             </dd>
           </div>
         </dl>
 
         <p
-          v-if="error"
-          class="ds-error"
-          role="alert"
+          v-for="blocker in blockers"
+          :key="blocker"
+          class="ds-hint"
+          role="status"
         >
           <AlertCircle
             :size="16"
             :stroke-width="1.5"
             aria-hidden="true"
           />
-          {{ error }}
+          {{ blocker }}
         </p>
 
         <button
           type="button"
           class="ds-btn ds-btn--primary ds-btn--lg ds-btn--block"
-          :disabled="isSubmitting"
-          :aria-busy="isSubmitting"
+          :disabled="!summary?.canCheckout || isLoading"
           @click="emit('checkout')"
         >
-          <span
-            v-if="isSubmitting"
-            class="ds-spinner"
-            aria-hidden="true"
-          />
           Finalizar compra
         </button>
         <button

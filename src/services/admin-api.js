@@ -1,4 +1,4 @@
-import { DROP_BASE, STORE_BASE } from './config';
+import { DROP_BASE, STORE_BASE, storefrontPath } from './config';
 import { request } from './http';
 import { crud } from './resources';
 import { getAccessToken, REALMS } from './session';
@@ -233,7 +233,8 @@ export const writeAudit = async ({ eventId, customerId = null, action, entityNam
 export const listMyEnterprises = () => request('GET', store('enterprises/mine'), opts());
 export const updateEnterprise = (payload) => request('PUT', store('enterprises/current'), opts(payload));
 // Dados públicos da loja (nome, e-mail, telefone): o back não tem GET completo da empresa.
-export const getPublicStore = () => request('GET', store('storefront/store'), { realm: null });
+// Rota do storefront: a loja vem do slug do endereço (STORE_SLUG), não do token.
+export const getPublicStore = () => request('GET', storefrontPath(STORE_BASE, 'store'), { realm: null });
 
 export const listInvitations = () => request('GET', store('invitations'), opts());
 export const inviteMember = ({ email, kindId, accessRoleIds }) => request('POST', store('invitations'), opts({ email, kindId, accessRoleIds }));

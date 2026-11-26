@@ -1,6 +1,6 @@
-# [API · Front-end] Checkout com dados reais: reserva, cupom e pedido
+# [API · Front-end] Checkout do drop com dados reais: reserva por variação e pagamento
 
-**Depende de:** tasks 15, 14 e 17 · **Recomendado depois de:** task 07 (DS do checkout)
+**Depende de:** tasks 15, 14, 16 e 17 · **Recomendado depois de:** task 07 (DS do checkout)
 
 ## Tecnologias
 
@@ -24,63 +24,58 @@
 - Erros voltam como `listMessageErrors` genérico, sem ligação com o campo.
 - `fullName` e `email` são coletados e **não são enviados** a lugar nenhum.
 
+## Revisão de 25/11/2026
+
+O back-end reescreveu a compra do drop (Partes 6 e 7, [FluxoComercial.md](https://github.com/joseHenrique346/DRPCommerce-Backend/blob/main/Documentation/Drop/Application/FluxoComercial.md)): a reserva é por **variação** dentro da sessão da fila, e o checkout parte da reserva e devolve a **URL de pagamento** do Mercado Pago da loja. Hoje não há cupom nem frete no checkout do drop (frete zero), e o endereço vem do **cadastro do cliente**, não de um formulário do modal.
+
 ## Como implementar
 
-### 1. Fluxo
+### 1. Rotas (cliente logado, prefixo `/api/drop/api/storefront/{slug}/drop`)
 
-| Momento | Chamada | Na tela |
+| Momento | Rota | Corpo / resposta |
 |---|---|---|
-| Modal abre (status 2 Chamado) | `reserve({ queueEntryId, dropProductId, quantity: 1 })` | skeleton do resumo → subtotal (`totalAmount`) e prazo (`expiresAt`) |
-| Clicar "Aplicar" no cupom | `validateCoupon(eventId, code)` | desconto (`discountAmount`) ou erro no campo do cupom |
-| Clicar "Confirmar compra" | `checkout({ reservationId, couponCode, shipping… })` | loading no botão (DS task 07) |
-| Sucesso | — | número do pedido (`id`) em `--ds-font-mono`, totais da resposta, badge `--success` |
+| Chamado na fila (status 2), escolheu variações | `POST events/{id}/reservations` | `{ participationId, sessionId, idempotencyKey, lines: [{ variantId, quantity }] }` → `DropReservationResponse`: `id`, `quantity`, `totalAmount`, `expiresAt`, `lines[]` (`variantId`, `sku`, `itemName`, `quantity`, `unitPrice`, `optionsJson`) |
+| Consultar reserva | `GET reservations/{id}` · `GET reservations` | reserva própria (status 1 Ativa, 2 Confirmada, 3 Expirada, 4 Cancelada) |
+| Pagar | `POST reservations/{id}/checkout` | `DropPurchaseResponse`: `id`, `totalAmount`, `paymentCheckoutUrl`, `dropOrderPaymentStatusId`, endereço e `items[]` |
+| Acompanhar | `GET purchases/{id}` | mesmo formato; `financialReviewCode` quando o pagamento caiu em revisão |
 
-- `dropProductId` vem de `getEventProducts` (task 16). `queueEntryId` vem da fila (task 17).
-- Reabrir o modal com status 3 chama `reserve` de novo: o back-end é idempotente e devolve a mesma reserva.
-- O prazo do modal é `expiresAt − serverNow()`. Ao zerar, o modal fecha explicando o motivo (task 07), e o polling da fila (task 17) já vai mostrar status 5.
+- `participationId` e `variantId` vêm do detalhe do evento (task 16); `sessionId` vem de `session.id` da fila (task 17).
+- `idempotencyKey` = `crypto.randomUUID()` criado quando o cliente confirma as variações e **reaproveitado** em qualquer nova tentativa da mesma reserva.
+- O checkout é idempotente pela reserva: repetir devolve o mesmo pedido.
 
-### 2. Mapa de campos formulário ↔ API
+### 2. Tela (`CheckoutModal.vue` vira o resumo da reserva)
 
-| Campo do formulário | Campo no `checkout` | Erro vindo de `fieldErrors` |
-|---|---|---|
-| `addressLine` | `shippingAddressLine` | `shippingAddressLine` |
-| `city` | `shippingCity` | `shippingCity` |
-| `state` | `shippingState` | `shippingState` |
-| `zipCode` | `shippingZipCode` | `shippingZipCode` |
-| `couponCode` | `couponCode` | `couponCode` / `Coupon.Invalid` |
-| `fullName`, `email` | **conforme decisão da task 14** | — |
+1. Escolha das variações e quantidades de uma participação, até `maxPerCustomer` somando todas as variações.
+2. "Reservar" → resumo com as linhas, `totalAmount` e prazo (`expiresAt − serverNow()`, o mesmo da sessão: 15 min fixos).
+3. Endereço de entrega lido do cadastro (`GET storefront/me`), só para conferência, com link para "Minha conta" se estiver incompleto.
+4. "Ir para o pagamento" → `checkout` → abre `paymentCheckoutUrl`. **Voltar do Mercado Pago não confirma a compra**: a tela de retorno consulta `GET purchases/{id}` e mostra "Aguardando confirmação do pagamento" até o status mudar.
+5. Frete: "Grátis" (o checkout do drop usa frete zero; não é cotação).
 
-Renomear os campos do formulário para os nomes da API é aceitável, e elimina a tabela de tradução.
-
-### 3. Totais
-
-O resumo exibe **somente** valores devolvidos pela API (`reserve` antes, `checkout` depois). Nenhum cálculo de desconto, frete ou total no front. Formatação `Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })`.
-
-### 4. Erros (`ApiError.code` → comportamento)
+### 3. Erros (`code` → comportamento)
 
 | `code` | Comportamento |
 |---|---|
-| 400 com `fieldErrors` | erro abaixo de cada campo (`aria-invalid` + `role="alert"`, task 07) |
-| `Coupon.Invalid` | erro no campo do cupom, com o `detail` |
-| `Checkout.NotYourTurn` / `Checkout.WindowExpired` / `Checkout.ReservationExpired` | fecha o modal com a explicação; a fila mostra "expirado" |
-| `Checkout.SoldOut` | fecha o modal: "Esgotou antes da confirmação" |
-| `Checkout.LimitExceeded` | mensagem no topo do modal |
-| `Network` / `Timeout` no **checkout** | **não reenviar automaticamente**: mostrar "Confirmando seu pedido…" e reconsultar o status da fila. Status 4 = pedido criado (mostrar sucesso); status 3 com reserva ainda válida = liberar "Tentar de novo" |
+| `DropPurchase.PurchaseLimit` | mensagem no resumo: limite do CPF no produto atingido (conta reservas vigentes e compras) |
+| `DropPurchase.InsufficientStock` / `ProductUnavailable` | volta para a escolha de variações e relê o detalhe (task 16) |
+| `DropPurchase.SessionExpired` / `SessionNotFound` | fecha o modal: "Seu prazo terminou"; a fila (task 17) mostra o status 5 |
+| `DropPurchase.IdempotencyConflict` | gera nova chave e pede para confirmar de novo |
+| `DropPurchase.InvalidTotal` / `InvalidReservation` | mensagem genérica no topo |
+| `DropPurchase.AddressRequired` (409 no checkout) | "Complete o endereço", com link para a conta |
+| `DropPurchase.ReservationExpired` / `ReservationNotFound` | fecha o modal com a explicação |
+| rede / timeout na reserva ou no checkout | **não reenviar sozinho**: consulta `GET reservations` / `GET purchases/{id}` e, se nada foi criado, libera "Tentar de novo" com a mesma `idempotencyKey` |
 
-O último caso importa: um timeout no checkout pode ter criado o pedido, e reenviar às cegas pode gerar cobrança dupla quando houver pagamento.
+### 4. Limpeza
 
-### 5. Limpeza
-
-Sai do front: validação local de `DROP10`, cálculo de desconto e frete, `createDropOrder`, `ORDER_SUCCESS_PREFIX` no `localStorage`.
+Sai do front: validação local de `DROP10`, cálculo de desconto e frete, formulário de endereço do modal, `createDropOrder` e `ORDER_SUCCESS_PREFIX` no `localStorage`.
 
 ## Critérios de aceite
 
-- [ ] Reserva criada ao abrir o modal; resumo e prazo vêm dela
-- [ ] Cupom validado pela API; nenhuma regra de cupom no front
-- [ ] Pedido criado via `checkout`; confirmação mostra `id` e totais da resposta
-- [ ] Erros de campo aparecem no campo certo
-- [ ] Todos os `code` da tabela tratados; timeout no checkout não reenvia sozinho
-- [ ] Nenhum cálculo monetário no front (`grep` abaixo)
+- [ ] Reserva por variação com `participationId`, `sessionId`, `idempotencyKey` e `lines`
+- [ ] Limite por CPF respeitado somando as variações; o erro do back aparece no resumo
+- [ ] Prazo do resumo = `expiresAt − serverNow()`
+- [ ] Checkout abre `paymentCheckoutUrl`; o retorno só mostra "confirmado" depois de `GET purchases/{id}`
+- [ ] Timeout não reenvia sozinho, e a nova tentativa usa a mesma chave
+- [ ] Nenhum cálculo monetário no front
 - [ ] Funciona com `VITE_API_MODE=http` e `mock`
 
 ## Verificação
@@ -90,23 +85,19 @@ grep -rnE "DROP10|\* 0\.9|\+ 20|ORDER_SUCCESS|createDropOrder" src/ | grep -v "s
 npm run lint
 ```
 
-Manual (modo http, tasks 10–14): ser chamado na fila, abrir o checkout, aplicar cupom válido e inválido, enviar CEP inválido, confirmar o pedido e conferir no banco: `pedido` e `item_pedido` criados, reserva confirmada, `units_sold` incrementado. Repetir deixando a reserva expirar com o modal aberto.
-
 ## Referências
 
-- `CONTRATO-API.md` §2 (erros) e §4 (Checkout)
-- Task 14 (regras e códigos do back-end) e task 07 (comportamento do modal)
-- `design-system/components/input.md`, `components/modal.md`
+- `FluxoComercial.md` (back-end), seções "Fila e compra" e "Pagamento e confirmação"
+- Tasks 16 e 17; task 07 (comportamento do modal)
+- `design-system/components/modal.md`, `components/input.md`
 
 ## Para o Claude Code
 
 ```
-Leia frontend/design-system/migration/tasks/CONTRATO-API.md §2 e §4 (Checkout) e as tasks
-14, 15 e 17. Conecte CheckoutModal.vue e o App.vue a reserve (ao abrir o modal),
-validateCoupon e checkout de src/services/index.js. Resumo, prazo e totais vêm só das
-respostas da API (prazo = expiresAt − serverNow()); fieldErrors vão para os campos
-conforme a tabela; trate os códigos Checkout.* e Coupon.Invalid; timeout no checkout não
-reenvia sozinho. Remova do front a validação local de cupom, o cálculo de desconto/frete,
-createDropOrder e o localStorage de pedido. Siga a decisão da task 14 sobre fullName/email.
-Não crie bloco <style>.
+Leia a task inteira. Crie reserveDrop(eventId, { participationId, sessionId, idempotencyKey, lines }),
+getDropReservation(id), checkoutDrop(reservationId) e getDropPurchase(id) em client-api.js e conecte
+CheckoutModal.vue e o App.vue a elas: escolha de variações até maxPerCustomer, resumo e prazo só da
+resposta, endereço do cadastro, redirecionamento para paymentCheckoutUrl e tela de retorno que consulta
+a compra. Trate os códigos da tabela; timeout não reenvia sozinho. Atualize o mock nas mesmas rotas.
+Remova o cupom e o frete locais e o formulário de endereço do modal. Não crie bloco <style>.
 ```

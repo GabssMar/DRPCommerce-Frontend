@@ -1,16 +1,21 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted, onWatcherCleanup, defineAsyncComponent } from 'vue';
-import { ShieldCheck, Layers, ArrowLeft, ShoppingBag, Bell, UserRound, ListPlus, ClipboardCheck } from '@lucide/vue';
-import { api, getVirtualTime, subscribeToSimState } from './services/api';
+import { computed, ref, watch, watchEffect, onWatcherCleanup, defineAsyncComponent } from 'vue';
+import { Layers, ArrowLeft, ShoppingBag, Bell, UserRound, ListPlus, ClipboardCheck } from '@lucide/vue';
+import { IS_MOCK } from './services/config';
+import { useDropQueue } from './composables/useDropQueue';
+import { dropPhase, getDropEvent, listPublicDrops, QUEUE_STATUS } from './services/client-api';
+import { useServerNow } from './composables/useNow';
 import { ADMIN_ENABLED } from './services/config';
-import { isSignedIn, REALMS } from './services/session';
-import { focusMain, href, isAdminRoute, navigate, route } from './router';
+import { currentEnterpriseId, isSignedIn, REALMS } from './services/session';
+import { getPublicStore, listMyEnterprises } from './services/admin-api';
+import { focusMain, href, isAdminRoute, navigate, redirect, route } from './router';
+import { findProductSlugById } from './services/storefront-api';
 import { useBag } from './composables/useBag';
 import Countdown from './components/Countdown.vue';
 import QueueStatus from './components/QueueStatus.vue';
 import StockProgress from './components/StockProgress.vue';
 import ProductDetails from './components/ProductDetails.vue';
-import CheckoutModal from './components/CheckoutModal.vue';
+import DropPurchase from './components/drop/DropPurchase.vue';
 import EventPortal from './components/EventPortal.vue';
 import StoreShowcase from './components/StoreShowcase.vue';
 import StoreProductDetail from './components/StoreProductDetail.vue';
@@ -23,16 +28,16 @@ import CustomerAuth from './components/account/CustomerAuth.vue';
 import LandingPage from './components/LandingPage.vue';
 import AccountOrders from './components/account/AccountOrders.vue';
 import AccountNotifications from './components/account/AccountNotifications.vue';
+import AccountAddresses from './components/account/AccountAddresses.vue';
 import AdminApp from './components/admin/AdminApp.vue';
 
-// Telas da loja que ainda rodam sobre o simulador de src/services/api.js
 // (portal, detalhe do drop, vitrine, sacola) e as telas novas, que usam a
 // camada src/services/ no formato do back-end.
 // Simulador do drop: ferramenta de teste, só no servidor de desenvolvimento.
 // Carregado sob demanda para não entrar no build de produção.
 const SHOW_SIMULATION = import.meta.env.DEV;
 const SimulationPanel = SHOW_SIMULATION ? defineAsyncComponent(() => import('./components/SimulationPanel.vue')) : null;
-const PAGE_BY_ROUTE = { portal: 'portal', drop: 'detail', vitrine: 'vitrine', product: 'product', cart: 'cart' };
+const PAGE_BY_ROUTE = { portal: 'portal', drop: 'detail', vitrine: 'vitrine', 'vitrine-category': 'vitrine', product: 'product', cart: 'cart' };
 const currentPage = computed(() => PAGE_BY_ROUTE[route.value.name] ?? route.value.name);
 const showAdmin = computed(() => ADMIN_ENABLED && isAdminRoute(route.value));
 // Página inicial (#/) conforme a sessão:
@@ -51,307 +56,148 @@ watch([customerSignedIn, employeeSignedIn, route], ([customer, employee, r]) => 
   else if (!customer && employee && r.name === 'portal' && r.path === '/') navigate('/admin');
 }, { immediate: true });
 
+// Título da aba: o nome da plataforma até alguém entrar; depois, o nome da loja.
+//   loja do cliente: GET storefront/{slug}/store (tradeName)
+//   painel: a loja da sessão da equipe (enterprises/mine + EnterpriseId do token)
+const PLATFORM_NAME = 'DRP Commerce';
+const storeName = ref('');
+watch([showAdmin, customerSignedIn, employeeSignedIn], async ([admin, customer, employee], _, onCleanup) => {
+  let stale = false;
+  onCleanup(() => {
+    stale = true;
+  });
+  let name = '';
+  try {
+    if (admin && employee) {
+      const mine = await listMyEnterprises();
+      const id = currentEnterpriseId();
+      name = (mine.find((e) => e.enterpriseId === id) ?? mine[0])?.tradeName ?? '';
+    } else if (!admin && customer) {
+      name = (await getPublicStore())?.tradeName ?? '';
+    }
+  } catch {
+    name = '';
+  }
+  if (!stale) storeName.value = name;
+}, { immediate: true });
+watchEffect(() => {
+  const base = storeName.value || PLATFORM_NAME;
+  document.title = showAdmin.value ? `${base} · Painel` : base;
+});
+
 const selectedEventId = ref(1);
-const selectedProductId = ref(null);
 watch(route, (r) => {
   if (r.name === 'drop') selectedEventId.value = Number(r.params.id) || 1;
-  if (r.name === 'product') selectedProductId.value = Number(r.params.id);
+  // Link antigo #/vitrine/:id: vai para #/vitrine/p/:slug se o id existir.
+  if (r.name === 'product-legacy') {
+    findProductSlugById(r.params.id)
+      .catch(() => null)
+      .then((slug) => redirect(slug ? `/vitrine/p/${encodeURIComponent(slug)}` : '/vitrine'));
+  }
   // Em produção sem a flag, #/admin cai no portal, sem mensagem.
   if (isAdminRoute(r) && !ADMIN_ENABLED) navigate('/');
 }, { immediate: true });
 
+// Portal e detalhe do drop (task 16): rotas públicas storefront/{slug}/drop/events(/{id}).
+// Fila (task 17) e compra (task 18): storefront/{slug}/drop/events/{id}/queue e /reservations.
 const eventsList = ref([]);
-const eventData = ref(null);
-const productData = ref(null);
-const queueEntry = ref(null);
-const virtualTime = ref(getVirtualTime());
+const dropEvent = ref(null);
+const dropNotFound = ref(false);
+const dropError = ref('');
+const isStockRefreshing = ref(false);
+const now = useServerNow();
+const virtualTime = computed(() => new Date(now.value));
 const isCheckoutOpen = ref(false);
-const isSubmittingOrder = ref(false);
-const successOrder = ref(null);
-const isLoading = ref(false);
-const secondsToExpiry = ref(600);
-const checkoutError = ref('');
 const isPortalLoading = ref(true);
 const portalError = ref('');
 
-// Vitrine (cliente casual): catálogo regular e sacola local.
-const storeProducts = ref([]);
-const isStoreLoading = ref(true);
-const storeError = ref('');
-const { bag, bagCount, addToBag, updateBagQuantity, removeFromBag } = useBag();
-
-const bagItemIds = computed(() => bag.value.map((i) => i.productId));
-const productById = (id) => storeProducts.value.find((p) => p.id === id);
-const selectedProduct = computed(() => productById(selectedProductId.value) ?? null);
-const bagLines = computed(() => bag.value
-  .map((i) => ({ product: productById(i.productId), quantity: i.quantity }))
-  .filter((l) => l.product));
-const quantityInBag = computed(() => bag.value.find((i) => i.productId === selectedProductId.value)?.quantity ?? 0);
+// Vitrine: as telas carregam o próprio catálogo (task 29); aqui só o contador da sacola.
+const { bagCount } = useBag();
 
 const PORTAL_ERROR_MESSAGE = 'Não conseguimos carregar os drops. Verifique sua conexão e tente de novo.';
 
 const loadPortalData = async () => {
   isPortalLoading.value = true;
   try {
-    const response = await api.getAllDropEvents();
-    if (response.isSuccess) {
-      eventsList.value = response.content;
-      portalError.value = '';
-    } else {
-      portalError.value = PORTAL_ERROR_MESSAGE;
-    }
-  } catch (err) {
-    console.error('Portal fetch failed', err);
+    eventsList.value = await listPublicDrops();
+    portalError.value = '';
+  } catch {
     portalError.value = PORTAL_ERROR_MESSAGE;
   } finally {
     isPortalLoading.value = false;
   }
 };
 
+const DETAIL_ERROR_MESSAGE = 'Não conseguimos carregar este drop. Verifique sua conexão e tente de novo.';
+
 const loadEventDetailData = async (eventId) => {
-  isLoading.value = true;
-  successOrder.value = null;
-  queueEntry.value = null;
-  eventData.value = null;
-  productData.value = null;
-  secondsToExpiry.value = 600;
+  isCheckoutOpen.value = false;
+  dropEvent.value = null;
+  dropNotFound.value = false;
+  dropError.value = '';
 
   try {
-    const eventRes = await api.getDropEvent(eventId);
-    if (eventRes.isSuccess) {
-      eventData.value = eventRes.content;
-    }
-
-    const productRes = await api.getDropProduct(eventId);
-    if (productRes.isSuccess && productRes.content?.[0]) {
-      productData.value = productRes.content[0];
-    }
-
-    const savedQueue = localStorage.getItem(`veloce_queue_entry_${eventId}`);
-    if (savedQueue) {
-      queueEntry.value = JSON.parse(savedQueue);
-    }
-
-    const savedOrder = localStorage.getItem(`veloce_order_success_${eventId}`);
-    if (savedOrder) {
-      successOrder.value = JSON.parse(savedOrder);
-    }
+    dropEvent.value = await getDropEvent(eventId);
   } catch (err) {
-    console.error('Failed to load details for event', eventId, err);
-  } finally {
-    isLoading.value = false;
+    if (err?.kind === 'not-found') dropNotFound.value = true;
+    else dropError.value = DETAIL_ERROR_MESSAGE;
   }
+
 };
-
-const loadStoreData = async () => {
-  isStoreLoading.value = true;
-  try {
-    const response = await api.getStoreProducts();
-    if (response.isSuccess) {
-      storeProducts.value = response.content;
-      storeError.value = '';
-    } else {
-      storeError.value = 'Não conseguimos carregar a vitrine. Verifique sua conexão e tente de novo.';
-    }
-  } catch (err) {
-    console.error('Store fetch failed', err);
-    storeError.value = 'Não conseguimos carregar a vitrine. Verifique sua conexão e tente de novo.';
-  } finally {
-    isStoreLoading.value = false;
-  }
-};
-
-// Sincroniza a tela com o estado do simulador; reassina ao trocar de evento.
-watch(selectedEventId, (eventId) => {
-  loadPortalData();
-
-  const unsubscribeSim = subscribeToSimState((newSim) => {
-    virtualTime.value = new Date(Date.now() + newSim.simulatedTimeOffset);
-
-    eventsList.value = Object.values(newSim.events).map(ev => ({
-      id: ev.id,
-      name: ev.name,
-      slug: ev.slug,
-      description: ev.description,
-      coverImageUrl: ev.coverImageUrl,
-      price: ev.price,
-      totalUnitsAvailable: ev.unitsAllocated,
-      unitsSold: ev.unitsSold,
-      queueOpensAt: ev.dates.queueOpensAt,
-      dropStartsAt: ev.dates.dropStartsAt,
-      dropEndsAt: ev.dates.dropEndsAt
-    }));
-
-    const evSettings = newSim.events[eventId];
-    if (!evSettings) return;
-
-    if (eventData.value) {
-      eventData.value = {
-        ...eventData.value,
-        totalUnitsAvailable: evSettings.unitsAllocated,
-        unitsSold: evSettings.unitsSold,
-        registrationStartsAt: evSettings.dates.queueOpensAt,
-        registrationEndsAt: evSettings.dates.dropStartsAt,
-        queueOpensAt: evSettings.dates.queueOpensAt,
-        dropStartsAt: evSettings.dates.dropStartsAt,
-        dropEndsAt: evSettings.dates.dropEndsAt
-      };
-    }
-
-    if (productData.value) {
-      productData.value = {
-        ...productData.value,
-        unitsAllocated: evSettings.unitsAllocated,
-        unitsSold: evSettings.unitsSold
-      };
-    }
-
-    if (queueEntry.value) {
-      const localSaved = JSON.parse(localStorage.getItem(`veloce_queue_entry_${eventId}`));
-      if (!localSaved) {
-        queueEntry.value = null;
-      } else {
-        const updated = {
-          ...localSaved,
-          position: evSettings.currentPosition,
-          statusId: evSettings.queueStatusId
-        };
-        localStorage.setItem(`veloce_queue_entry_${eventId}`, JSON.stringify(updated));
-        queueEntry.value = updated;
-      }
-    }
-
-    const savedOrder = localStorage.getItem(`veloce_order_success_${eventId}`);
-    successOrder.value = savedOrder ? JSON.parse(savedOrder) : null;
-  });
-
-  onWatcherCleanup(unsubscribeSim);
-}, { immediate: true });
 
 watch([selectedEventId, currentPage], ([eventId, page]) => {
   if (page === 'detail') {
     loadEventDetailData(eventId);
-  } else if (page === 'vitrine' || ((page === 'product' || page === 'cart') && !storeProducts.value.length)) {
-    loadStoreData();
   } else if (page === 'portal') {
     loadPortalData();
   }
 }, { immediate: true });
 
-let clockInterval = null;
-onMounted(() => {
-  clockInterval = setInterval(() => {
-    virtualTime.value = getVirtualTime();
-  }, 1000);
+const phase = computed(() => dropPhase(dropEvent.value, now.value));
+
+// Fila (task 17): storefront/{slug}/drop/events/{id}/queue, só no detalhe do drop.
+const queueEventId = computed(() => (currentPage.value === 'detail' ? selectedEventId.value : null));
+const queue = useDropQueue(queueEventId, now);
+const queueStatusId = computed(() => queue.entry.value?.queueEntryStatusId ?? null);
+
+// A compra abre com a vez liberada. Se a vez expira ou a entrada é removida, o modal
+// fecha; compra concluída (4) mantém o modal aberto para mostrar a confirmação.
+watch(queueStatusId, (statusId) => {
+  if ([QUEUE_STATUS.EXPIRED, QUEUE_STATUS.REMOVED].includes(statusId)) isCheckoutOpen.value = false;
 });
-onUnmounted(() => clearInterval(clockInterval));
 
-// Janela de checkout: conta 600s a partir do momento em que o cliente é chamado.
-watch([queueEntry, selectedEventId], ([entry, eventId]) => {
-  if (!entry || entry.statusId !== 2) {
-    secondsToExpiry.value = 600;
-    return;
-  }
-
-  const timerId = setInterval(() => {
-    if (secondsToExpiry.value <= 1) {
-      clearInterval(timerId);
-      const expiredEntry = {
-        ...entry,
-        statusId: 3,
-        expiredAt: new Date().toISOString()
-      };
-      queueEntry.value = expiredEntry;
-      localStorage.setItem(`veloce_queue_entry_${eventId}`, JSON.stringify(expiredEntry));
-      api.updateEventSettings(eventId, { queueStatusId: 3 });
-      isCheckoutOpen.value = false;
-      secondsToExpiry.value = 0;
-      return;
-    }
-    secondsToExpiry.value -= 1;
-  }, 1000);
-
-  onWatcherCleanup(() => clearInterval(timerId));
-}, { immediate: true });
-
-watch([selectedEventId, currentPage], ([eventId, page]) => {
-  if (page !== 'detail') return;
-
-  const stockInterval = setInterval(async () => {
+// Estoque: relê o detalhe a cada 4 s com a fila aberta ou o drop em andamento; uma
+// leitura só nas outras fases. Erro mantém o último saldo na tela. Aba oculta pausa.
+const STOCK_POLL_MS = 4000;
+const pollingActive = computed(() => currentPage.value === 'detail' && Boolean(dropEvent.value) && ['queue', 'live'].includes(phase.value));
+watch([pollingActive, selectedEventId], ([active, eventId]) => {
+  if (!active) return;
+  const timer = setInterval(async () => {
+    if (document.visibilityState === 'hidden' || isStockRefreshing.value) return;
+    isStockRefreshing.value = true;
     try {
-      const res = await api.getDropProduct(eventId);
-      if (res.isSuccess && res.content?.[0]) {
-        productData.value = {
-          ...productData.value,
-          unitsSold: res.content[0].unitsSold,
-          unitsAllocated: res.content[0].unitsAllocated
-        };
-      }
-    } catch (err) {
-      console.error('Stock sync failed', err);
+      const fresh = await getDropEvent(eventId);
+      if (selectedEventId.value === eventId) dropEvent.value = fresh;
+    } catch {
+      /* mantém o último saldo; a próxima volta tenta de novo */
+    } finally {
+      isStockRefreshing.value = false;
     }
-  }, 4000);
-
-  onWatcherCleanup(() => clearInterval(stockInterval));
+  }, STOCK_POLL_MS);
+  onWatcherCleanup(() => clearInterval(timer));
 }, { immediate: true });
 
 const handleSelectEvent = (eventId) => {
   navigate(`/drops/${eventId}`);
 };
 
-const handleJoinQueue = async (alreadyUpdatedEntry = null) => {
-  if (alreadyUpdatedEntry) {
-    queueEntry.value = alreadyUpdatedEntry;
-    return;
-  }
-
-  isLoading.value = true;
-  try {
-    const response = await api.joinQueue(selectedEventId.value);
-    if (response.isSuccess) {
-      queueEntry.value = response.content;
-      api.updateEventSettings(selectedEventId.value, {
-        currentPosition: response.content.position,
-        initialPosition: response.content.position,
-        queueStatusId: response.content.statusId
-      });
-    }
-  } catch (err) {
-    console.error('Join queue failed', err);
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const handleCheckoutSubmit = async (payload) => {
-  isSubmittingOrder.value = true;
-  checkoutError.value = '';
-  try {
-    const response = await api.createDropOrder(payload);
-    if (response.isSuccess) {
-      successOrder.value = response.content;
-      isCheckoutOpen.value = false;
-      queueEntry.value = null;
-    } else {
-      checkoutError.value = response.listMessageErrors?.[0] || 'Erro desconhecido ao processar pedido.';
-    }
-  } catch (err) {
-    console.error('Order submission failed', err);
-    checkoutError.value = 'Erro ao conectar com o serviço de pagamento.';
-  } finally {
-    isSubmittingOrder.value = false;
-  }
-};
-
-const formatBRL = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-
 const goToPortal = () => navigate('/');
 const goToVitrine = () => navigate('/vitrine');
-const goToProduct = (productId) => navigate(`/vitrine/${productId}`);
+const goToProduct = (slug) => navigate(`/vitrine/p/${encodeURIComponent(slug)}`);
 const goToCart = () => navigate('/sacola');
 
-const STORE_PAGES = ['vitrine', 'product', 'cart', 'checkout'];
-const ACCOUNT_PAGES = ['account', 'account-orders', 'account-order', 'account-notifications'];
+const STORE_PAGES = ['vitrine', 'product', 'product-legacy', 'cart', 'checkout'];
+const ACCOUNT_PAGES = ['account', 'account-orders', 'account-order', 'account-notifications', 'account-addresses'];
 const isStorePage = computed(() => STORE_PAGES.includes(currentPage.value));
 const isOrdersPage = computed(() => ['account-orders', 'account-order'].includes(currentPage.value));
 const isDropsPage = computed(() => !isStorePage.value && !ACCOUNT_PAGES.includes(currentPage.value));
@@ -363,38 +209,26 @@ const backTarget = computed(() => {
   return null;
 });
 
-// Sair da fila: por ora só no simulador; na integração vira POST /queue-entries/leave (task 17).
-const handleLeaveQueue = () => {
-  const eventId = selectedEventId.value;
-  localStorage.removeItem(`veloce_queue_entry_${eventId}`);
-  const initial = api.getSettings().events[eventId]?.initialPosition;
-  api.updateEventSettings(eventId, { currentPosition: initial, queueStatusId: 1 });
-  queueEntry.value = null;
-};
-
 // Informação de sistema (não é status do drop): de onde vêm os dados e a hora virtual.
 const environmentLabel = computed(() => {
-  if (!api.getSettings().isSimulationMode) return 'Produção';
+  if (!IS_MOCK) return 'Produção';
   return `Simulação · ${virtualTime.value.toLocaleTimeString('pt-BR')}`;
 });
 
-const isDropSoldOut = computed(() => Boolean(productData.value) && productData.value.unitsSold >= productData.value.unitsAllocated);
+const isDropSoldOut = computed(() => Boolean(dropEvent.value?.soldOut));
 
 // Badge ao lado do h1, conforme o mapa de estados de design-system/components/badge.md.
 const dropBadge = computed(() => {
-  const ev = eventData.value;
+  const ev = dropEvent.value;
   if (!ev) return null;
-  if (successOrder.value) return { variant: 'ds-badge--success', label: 'Pedido confirmado' };
-
-  const now = virtualTime.value;
-  if (now >= new Date(ev.dropEndsAt)) return { variant: 'ds-badge--done', label: 'Encerrado' };
-
+  if (phase.value === 'ended') return { variant: 'ds-badge--done', label: 'Encerrado' };
   if (isDropSoldOut.value) return { variant: 'ds-badge--done', label: 'Esgotado' };
-
-  const queueOpens = new Date(ev.queueOpensAt);
-  if (now < queueOpens) {
-    const time = queueOpens.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    return { variant: 'ds-badge--scheduled', label: `Abre em ${time}` };
+  if (phase.value === 'upcoming') {
+    const opens = new Date(ev.queueOpensAt ?? ev.dropStartsAt);
+    const time = opens.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const sameDay = opens.toDateString() === new Date(now.value).toDateString();
+    const day = opens.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return { variant: 'ds-badge--scheduled', label: sameDay ? `Fila abre às ${time}` : `Fila abre ${day} às ${time}` };
   }
   return { variant: 'ds-badge--live', label: 'AO VIVO', live: true };
 });
@@ -490,7 +324,7 @@ const dropBadge = computed(() => {
             :stroke-width="1.5"
             aria-hidden="true"
           />
-          VELOCE // LABS
+          {{ storeName || 'Loja' }}
         </button>
       </div>
 
@@ -567,7 +401,7 @@ const dropBadge = computed(() => {
       <EventPortal
         v-if="currentPage === 'portal'"
         :events="eventsList"
-        :virtual-time="virtualTime"
+        :now="now"
         :is-loading="isPortalLoading"
         :error="portalError"
         @select-event="handleSelectEvent"
@@ -576,31 +410,20 @@ const dropBadge = computed(() => {
 
       <StoreShowcase
         v-else-if="currentPage === 'vitrine'"
-        :products="storeProducts"
-        :is-loading="isStoreLoading"
-        :error="storeError"
-        :bag-item-ids="bagItemIds"
-        @add-to-bag="addToBag"
+        :category-slug="route.name === 'vitrine-category' ? route.params.slug : ''"
+        :query="route.query"
         @select-product="goToProduct"
-        @retry="loadStoreData"
       />
 
       <StoreProductDetail
         v-else-if="currentPage === 'product'"
-        :product="selectedProduct"
-        :quantity-in-bag="quantityInBag"
-        @add-to-bag="addToBag"
+        :slug="route.params.slug"
         @open-bag="goToCart"
-        @back="goToVitrine"
       />
 
       <StoreCart
         v-else-if="currentPage === 'cart'"
-        :lines="bagLines"
-        @update-quantity="updateBagQuantity"
-        @remove="removeFromBag"
         @checkout="navigate('/checkout')"
-        @select-product="goToProduct"
         @continue-shopping="goToVitrine"
       />
 
@@ -625,11 +448,42 @@ const dropBadge = computed(() => {
       />
 
       <AccountNotifications v-else-if="currentPage === 'account-notifications'" />
+      <AccountAddresses v-else-if="currentPage === 'account-addresses'" />
+
+      <article
+        v-else-if="currentPage === 'detail' && dropNotFound"
+        class="ds-card ds-empty"
+      >
+        <p>Drop não encontrado. Ele pode ter sido encerrado ou ainda não foi publicado.</p>
+        <button
+          type="button"
+          class="ds-btn ds-btn--secondary ds-btn--sm"
+          @click="goToPortal"
+        >
+          Voltar ao portal
+        </button>
+      </article>
+
+      <article
+        v-else-if="currentPage === 'detail' && dropError"
+        class="ds-card ds-empty"
+      >
+        <p class="ds-text-danger">
+          {{ dropError }}
+        </p>
+        <button
+          type="button"
+          class="ds-btn ds-btn--secondary ds-btn--sm"
+          @click="loadEventDetailData(selectedEventId)"
+        >
+          Tentar de novo
+        </button>
+      </article>
 
       <template v-else>
         <div class="ds-cluster ds-cluster--between">
           <h1 class="ds-title">
-            {{ eventData?.name ?? 'Carregando drop…' }}
+            {{ dropEvent?.name ?? 'Carregando drop…' }}
           </h1>
           <div aria-live="polite">
             <span
@@ -648,144 +502,84 @@ const dropBadge = computed(() => {
 
         <section class="ds-grid ds-grid--sidebar">
           <div class="ds-stack--6">
-            <ProductDetails :product-data="eventData ? { ...eventData, price: productData?.price } : null" />
+            <ProductDetails :event="dropEvent" />
           </div>
 
           <div class="ds-stack--6">
-            <article
-              v-if="successOrder"
-              class="ds-card ds-animate-in ds-stack--6"
+            <Countdown
+              :event-data="dropEvent"
+              :virtual-time="virtualTime"
+            />
+
+            <QueueStatus
+              :event="dropEvent"
+              :now="now"
+              :entry="queue.entry.value"
+              :seconds-left="queue.secondsLeft.value"
+              :eta-minutes="queue.etaMinutes.value"
+              :is-loading="queue.isLoading.value"
+              :is-joining="queue.isJoining.value"
+              :join-error="queue.joinError.value"
+              :reconnecting="queue.reconnecting.value"
+              @join="queue.join"
+              @checkout="isCheckoutOpen = true"
+            />
+
+            <StockProgress
+              :available="dropEvent?.available ?? null"
+              :is-refreshing="isStockRefreshing"
+            />
+
+            <nav
+              class="ds-card ds-card--sunken ds-stack--3"
+              aria-label="Inscrição e lista de espera"
             >
-              <header class="ds-card__header">
-                <div>
-                  <h2 class="ds-card__title">
-                    Pedido confirmado
-                  </h2>
-                  <p class="ds-card__subtitle">
-                    Sua vaga prioritária garantiu a reserva com sucesso.
-                  </p>
-                </div>
-                <ShieldCheck
-                  class="ds-text-success"
-                  :size="24"
+              <span class="ds-label-caps">Antes e depois da fila</span>
+              <a
+                class="ds-btn ds-btn--secondary ds-btn--block"
+                :href="href(`/drops/${selectedEventId}/inscricao`)"
+              >
+                <ClipboardCheck
+                  class="ds-btn__icon"
+                  :size="16"
                   :stroke-width="1.5"
                   aria-hidden="true"
                 />
-              </header>
-
-              <dl class="ds-stack--3">
-                <div class="ds-cluster ds-cluster--between">
-                  <dt class="ds-text-secondary">
-                    Pedido
-                  </dt>
-                  <dd><code>#{{ successOrder.id }}</code></dd>
-                </div>
-                <div class="ds-cluster ds-cluster--between">
-                  <dt class="ds-text-secondary">
-                    Reserva
-                  </dt>
-                  <dd>LockToken confirmado</dd>
-                </div>
-                <div class="ds-cluster ds-cluster--between">
-                  <dt class="ds-text-secondary">
-                    Envio para
-                  </dt>
-                  <dd>{{ successOrder.shippingCity }} - {{ successOrder.shippingState }}</dd>
-                </div>
-                <div class="ds-cluster ds-cluster--between">
-                  <dt class="ds-text-secondary">
-                    Valor total
-                  </dt>
-                  <dd class="ds-numeric">
-                    {{ formatBRL(successOrder.totalAmount) }}
-                  </dd>
-                </div>
-              </dl>
-
-              <footer class="ds-card__footer">
-                <button
-                  type="button"
-                  class="ds-btn ds-btn--primary ds-btn--block"
-                  @click="goToPortal"
-                >
-                  Voltar ao portal
-                </button>
-              </footer>
-            </article>
-
-            <template v-else>
-              <Countdown
-                :event-data="eventData"
-                :virtual-time="virtualTime"
-              />
-
-              <QueueStatus
-                :event-data="eventData"
-                :virtual-time="virtualTime"
-                :queue-entry="queueEntry"
-                :is-loading="isLoading"
-                :seconds-to-expiry="secondsToExpiry"
-                @join-queue="handleJoinQueue"
-                @leave-queue="handleLeaveQueue"
-                @checkout="isCheckoutOpen = true"
-              />
-
-              <StockProgress
-                :units-allocated="productData?.unitsAllocated"
-                :units-sold="productData?.unitsSold"
-              />
-
-              <nav
-                class="ds-card ds-card--sunken ds-stack--3"
-                aria-label="Inscrição e lista de espera"
+                Inscrição prévia
+              </a>
+              <a
+                class="ds-btn ds-btn--secondary ds-btn--block"
+                :href="href(`/drops/${selectedEventId}/lista-de-espera`)"
               >
-                <span class="ds-label-caps">Antes e depois da fila</span>
-                <a
-                  class="ds-btn ds-btn--secondary ds-btn--block"
-                  :href="href(`/drops/${selectedEventId}/inscricao`)"
-                >
-                  <ClipboardCheck
-                    class="ds-btn__icon"
-                    :size="16"
-                    :stroke-width="1.5"
-                    aria-hidden="true"
-                  />
-                  Inscrição prévia
-                </a>
-                <a
-                  class="ds-btn ds-btn--secondary ds-btn--block"
-                  :href="href(`/drops/${selectedEventId}/lista-de-espera`)"
-                >
-                  <ListPlus
-                    class="ds-btn__icon"
-                    :size="16"
-                    :stroke-width="1.5"
-                    aria-hidden="true"
-                  />
-                  {{ isDropSoldOut ? 'Entrar na lista de espera' : 'Lista de espera' }}
-                </a>
-              </nav>
-            </template>
+                <ListPlus
+                  class="ds-btn__icon"
+                  :size="16"
+                  :stroke-width="1.5"
+                  aria-hidden="true"
+                />
+                {{ isDropSoldOut ? 'Entrar na lista de espera' : 'Lista de espera' }}
+              </a>
+            </nav>
           </div>
         </section>
       </template>
     </main>
 
-    <CheckoutModal
-      v-if="productData"
-      :is-open="isCheckoutOpen"
-      :product-data="{ ...productData, name: eventData?.name, dropEventId: selectedEventId }"
-      :is-loading="isSubmittingOrder"
-      :seconds-to-expiry="secondsToExpiry"
-      :error-message="checkoutError"
-      @close="isCheckoutOpen = false"
-      @submit="handleCheckoutSubmit"
+    <DropPurchase
+      v-if="isCheckoutOpen && dropEvent"
+      :event="dropEvent"
+      :session="queue.entry.value?.session ?? null"
+      :now="now"
+      @close="isCheckoutOpen = false; queue.reload()"
+      @session-ended="queue.reload()"
+      @paid="queue.reload()"
     />
 
     <SimulationPanel
       v-if="SHOW_SIMULATION && ['portal', 'detail', 'vitrine', 'product', 'cart'].includes(currentPage)"
       :active-event-id="selectedEventId"
       :current-page="currentPage"
+      :event-dates="currentPage === 'detail' ? dropEvent : null"
     />
   </div>
 </template>

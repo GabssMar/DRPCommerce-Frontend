@@ -2,6 +2,7 @@ import { IS_MOCK, MOCK_LATENCY_MS, REQUEST_TIMEOUT_MS } from './config';
 import { ApiError, networkError, timeoutError } from './api-error';
 import { logRequest } from './request-log';
 import { getAccessToken, tokenClaims } from './session';
+import { syncServerClock } from './clock';
 import { mockFetch } from './mock/server';
 
 // Cliente HTTP único. Nenhuma tela chama fetch: tudo passa por request().
@@ -43,6 +44,7 @@ const httpTransport = async (method, url, { headers, body }) => {
       credentials: 'include',
       signal: controller.signal,
     });
+    syncServerClock(res.headers.get('Date'));
     return {
       status: res.status,
       data: parseBody(await res.text()),

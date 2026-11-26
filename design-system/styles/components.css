@@ -1084,6 +1084,47 @@
 }
 .ds-check--card:has(input:checked) { box-shadow: var(--ds-ring); }
 
+/* -------------------------------------------------------------- OPTION ---
+   Escolha de variante (tamanho, cor). Escolhida = tinta; indisponível =
+   borda tracejada e texto riscado, mas continua focável para ler o motivo.  */
+
+.ds-option-group { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
+
+.ds-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--ds-tap-min);
+  min-height: var(--ds-tap-min);
+  padding: 0 var(--ds-space-4);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-raised);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-medium);
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-standard),
+              border-color var(--ds-duration-fast) var(--ds-ease-standard),
+              color var(--ds-duration-fast) var(--ds-ease-standard);
+}
+.ds-option:hover { border-color: var(--ds-border-strong); }
+.ds-option:active { background: var(--ds-surface-sunken); }
+.ds-option:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+.ds-option[aria-pressed='true'] {
+  border-color: var(--ds-surface-inverse);
+  background: var(--ds-surface-inverse);
+  color: var(--ds-text-inverse);
+}
+.ds-option[aria-disabled='true'] {
+  border-style: dashed;
+  background: transparent;
+  color: var(--ds-text-tertiary);
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+.ds-option[aria-disabled='true']:hover { border-color: var(--ds-border-default); }
+
 /* ------------------------------------------------------------------ DL ---
    Lista de valores: rótulo à esquerda, valor à direita (totais, ficha).   */
 

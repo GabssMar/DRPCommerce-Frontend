@@ -6,15 +6,14 @@ import { href, navigate } from '../../router';
 import { isSignedIn, REALMS } from '../../services/session';
 import { cancelOrder, getOrderDetail, listMyOrders } from '../../services/client-api';
 import { ORDER_STATUS, PAYMENT_STATUS, SHIPMENT_TYPE, ufOf } from '../../services/status';
-import { brl, dropOrderCode, formatDate, formatDateTime, storeOrderCode } from '../../services/format';
+import { brl, dropOrderCode, formatDate, formatDateTime } from '../../services/format';
 import LoadState from '../ui/LoadState.vue';
 import StatusBadge from '../ui/StatusBadge.vue';
 import StepsBar from '../ui/StepsBar.vue';
 
-// C12 · Meus pedidos e rastreio. Rotas: GET storefront/orders(/{id}),
-// GET storefront/drop/orders(/{id}), GET orders|drop-orders/get-by-id (totais e endereço),
-// GET order-items/get-all, GET shipments/get-all, GET invoices/get-all,
-// PUT orders|drop-orders/update (cancelar).
+// C12 · Meus pedidos e rastreio. Vitrine (task 32): GET storefront/orders(/{id}) com
+// número comercial, itens, totais, cobrança e envios; POST storefront/orders/{id}/cancel.
+// Drop: GET storefront/drop/orders(/{id}) + drop-orders/get-by-id (task 18 troca).
 const props = defineProps({
   selectedSource: { type: String, default: null },
   selectedId: { type: Number, default: null },
@@ -34,7 +33,7 @@ const orders = computed(() => (list.data.value ?? []).filter((o) => filter.value
 // Ao lado do status do pedido, o pagamento precisa dizer que é pagamento.
 const PAYMENT_LABELS = { 1: 'Pagamento pendente', 5: 'Pagamento falhou' };
 
-const codeOf = (o) => (o.source === 'drop' ? dropOrderCode(o.id) : storeOrderCode(o.id));
+const codeOf = (o) => (o.source === 'drop' ? dropOrderCode(o.id) : `Nº ${o.number ?? o.id}`);
 
 // Pedido aberto: o da URL ou o mais recente.
 const selected = computed(() => {
@@ -91,12 +90,21 @@ const copyTracking = async () => {
   }
 };
 
-const canCancel = computed(() => selected.value?.source === 'store' && [1, 2].includes(selected.value.statusId) && selected.value.paymentStatusId !== 2);
+// Só pedido aguardando pagamento: o back diz em canCustomerCancel.
+const canCancel = computed(() => selected.value?.source === 'store' && Boolean(order.value?.canCustomerCancel ?? selected.value.canCustomerCancel));
+const confirmingCancel = ref(false);
+watch(selected, () => {
+  confirmingCancel.value = false;
+});
 const cancel = useAction(async () => {
   await cancelOrder(selected.value.source, order.value);
+  confirmingCancel.value = false;
   await list.reload();
   await detail.reload();
 });
+
+// Cobrança do pedido da vitrine aguardando pagamento.
+const pendingPayment = computed(() => (selected.value?.source === 'store' && order.value?.canCustomerCancel ? order.value : null));
 
 const open = (o) => navigate(`/conta/pedidos/${o.source}/${o.id}`);
 </script>
@@ -243,6 +251,31 @@ const open = (o) => navigate(`/conta/pedidos/${o.source}/${o.id}`);
           >
             <template v-if="order">
               <div
+                v-if="pendingPayment"
+                class="ds-card ds-card--sunken ds-stack--2"
+              >
+                <span class="ds-label-caps">Pagamento</span>
+                <p class="ds-text-sm">
+                  {{ pendingPayment.payment?.method ?? 'Pagamento' }}
+                  <template v-if="pendingPayment.paymentExpiresAt">
+                    · pagar até <strong class="ds-text-medium">{{ formatDateTime(pendingPayment.paymentExpiresAt) }}</strong>
+                  </template>
+                </p>
+                <p class="ds-hint">
+                  {{ pendingPayment.payment?.instructions || 'A loja confirmará o recebimento. Sem confirmação até o prazo, o pedido é cancelado.' }}
+                </p>
+                <a
+                  v-if="pendingPayment.payment?.checkoutUrl"
+                  class="ds-btn ds-btn--primary ds-btn--sm ds-self-start"
+                  :href="pendingPayment.payment.checkoutUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Ir para o pagamento
+                  <span class="ds-sr-only">(abre em nova aba)</span>
+                </a>
+              </div>
+              <div
                 v-if="shipment"
                 class="ds-card ds-card--sunken ds-stack--4"
               >
@@ -369,15 +402,36 @@ const open = (o) => navigate(`/conta/pedidos/${o.source}/${o.id}`);
                 {{ cancel.error.value.message }}
               </p>
               <div class="ds-cluster ds-cluster--end ds-cluster--2">
-                <button
-                  v-if="canCancel"
-                  type="button"
-                  class="ds-btn ds-btn--ghost-danger"
-                  :disabled="cancel.isPending.value"
-                  @click="cancel.run()"
-                >
-                  Cancelar pedido
-                </button>
+                <template v-if="canCancel">
+                  <button
+                    v-if="!confirmingCancel"
+                    type="button"
+                    class="ds-btn ds-btn--ghost-danger"
+                    @click="confirmingCancel = true"
+                  >
+                    Cancelar pedido
+                  </button>
+                  <template v-else>
+                    <span class="ds-text-sm">Cancelar este pedido? Os itens voltam ao estoque.</span>
+                    <button
+                      type="button"
+                      class="ds-btn ds-btn--ghost"
+                      :disabled="cancel.isPending.value"
+                      @click="confirmingCancel = false"
+                    >
+                      Manter
+                    </button>
+                    <button
+                      type="button"
+                      class="ds-btn ds-btn--ghost-danger"
+                      :disabled="cancel.isPending.value"
+                      :aria-busy="cancel.isPending.value"
+                      @click="cancel.run()"
+                    >
+                      Sim, cancelar
+                    </button>
+                  </template>
+                </template>
                 <a
                   class="ds-btn ds-btn--ghost"
                   :href="href('/conta/notificacoes')"

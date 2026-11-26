@@ -10,8 +10,8 @@ export default defineConfig(({ mode }) => {
     server: {
       // Em dev, /api vai para o Commerce.Gateway (YARP). Só usado com VITE_API_MODE=http.
       // O Gateway local roda em HTTPS com certificado de desenvolvimento: secure: false.
-      // changeOrigin: false preserva o Host: a vitrine é resolvida pelo subdomínio
-      // (<slug>.stores.localhost), então abra o front em http://teste.stores.localhost:5173.
+      // A loja do cliente vai no caminho (storefront/{slug}/...). Sem VITE_STORE_SLUG, o
+      // front usa o subdomínio como slug: abra em http://teste.stores.localhost:5173.
       proxy: {
         '/api': {
           target: env.VITE_GATEWAY_URL || 'https://localhost:5000',
