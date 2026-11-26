@@ -212,7 +212,7 @@ Cada arquivo em `design-system/migration/tasks/NN-*.md` é a descrição complet
 | 40 | Admin: equipe, perfis, permissões, convites | 27, 28 | convites já parcialmente feitos |
 | 41 | Admin: domínio próprio (verificação TXT) | 27, 40 | |
 | 42 | Aparência: catálogo de temas, renderer e editor | 27, 40 | |
-| 43 | Pagamento (Mercado Pago) e frete (Melhor Envio) | 32, 37 | **bloqueada pelo back** |
+| 43 | Pagamento (Mercado Pago) e frete (Melhor Envio) | 32 | feita em mock em 26/11: painel `#/admin/integracoes` (conectar Mercado Pago e Melhor Envio, escolher o provedor do checkout), status do pagamento e estorno no pedido. **Etiqueta** ainda não existe no back |
 | 44 | Catálogo do Drop e transferência entre vitrine e Drop | 27 | um produto é da vitrine **ou** do Drop, nunca dos dois; combinar com quem faz 33 e 34 |
 
 Paralelismo: 29–32 (vitrine), 33–39 (admin) e 42 podem correr ao mesmo tempo. 16, 17 e 18 mexem em `App.vue`; evite duas pessoas nelas ao mesmo tempo.

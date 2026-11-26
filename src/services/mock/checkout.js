@@ -20,7 +20,7 @@ const round = (value) => Math.round(value * 100) / 100;
 const nowIso = () => new Date().toISOString();
 const label = (table, id) => table[id]?.label ?? '';
 
-export function createCheckoutMock({ data, ok, problem, cart, catalog, addressesOf }) {
+export function createCheckoutMock({ data, ok, problem, cart, catalog, addressesOf, paymentGateway }) {
   const table = (key) => {
     const d = data();
     if (!d[key]) d[key] = key.endsWith('keys') || key.endsWith('quotes') ? {} : [];
@@ -65,6 +65,7 @@ export function createCheckoutMock({ data, ok, problem, cart, catalog, addresses
         estimatedDelivery: s.estimatedDelivery, shippedAt: s.shippedAt, deliveredAt: s.deliveredAt,
       })),
       history: o.history ?? [],
+      paymentOperations: o.paymentOperations ?? [],
       pickupAtStore: Boolean(o.pickupAtStore),
       shippingQuote: o.shippingQuote ?? null,
     };
@@ -204,6 +205,13 @@ export function createCheckoutMock({ data, ok, problem, cart, catalog, addresses
     if (subTotal < settings.minOrderValue) {
       return problem(400, 'Checkout.MinOrderValue', `O valor mínimo para comprar nesta loja é ${settings.minOrderValue.toFixed(2)}.`);
     }
+    // Provedor dos novos checkouts (task 43). Mercado Pago selecionado sem conexão é recusado,
+    // como no back: desconectar não volta sozinho para o pagamento manual.
+    const gateway = paymentGateway?.() ?? { provider: 'manual', connected: true };
+    if (!gateway.connected) {
+      return problem(409, 'Payment.ProviderUnavailable', 'O meio de pagamento da loja não está disponível. Tente de novo mais tarde.');
+    }
+    const viaMercadoPago = gateway.provider === 'mercado-pago';
 
     const now = Date.now();
     const shippingCost = freight?.price ?? 0;
@@ -223,7 +231,7 @@ export function createCheckoutMock({ data, ok, problem, cart, catalog, addresses
         carrierName: freight.carrierName, deliveryDays: freight.deliveryDays, volumeCount: 1,
       } : null,
       payment: {
-        provider: 'Manual', methodId, method: PAYMENT_METHODS[methodId], statusId: 1, status: 'Pendente',
+        provider: viaMercadoPago ? 'MercadoPago' : 'Manual', methodId, method: PAYMENT_METHODS[methodId], statusId: 1, status: 'Pendente',
         amount: totalAmount, reference: '', checkoutUrl: null, instructions: null, expiresAt,
         paidAt: null, refundedAt: null, attempt: null,
       },
@@ -234,6 +242,9 @@ export function createCheckoutMock({ data, ok, problem, cart, catalog, addresses
       isDeleted: false, deletedAt: null, createdAt: nowIso(), updatedAt: null,
     };
     rows.push(order);
+    // Sem provedor real no mock, o "Checkout Pro" é a própria tela do pedido; o painel de
+    // simulação aprova o pagamento como o webhook faria.
+    if (viaMercadoPago) order.payment.checkoutUrl = `${globalThis.location?.origin ?? ''}/#/conta/pedidos/store/${order.id}`;
 
     const items = data()['store/order-items'];
     lines.forEach((l) => {
@@ -304,5 +315,30 @@ export function createCheckoutMock({ data, ok, problem, cart, catalog, addresses
     return null;
   }
 
-  return { route };
+  // Atalhos do SimulationPanel (task 43): último pedido da vitrine do cliente logado.
+  const latest = (customerId, filter) => orders().filter((o) => o.customerId === customerId && o.payment && filter(o))
+    .sort((a, b) => b.id - a.id)[0];
+  const control = {
+    approvePayment(customerId) {
+      const order = latest(customerId, awaitingPayment);
+      if (!order) return;
+      Object.assign(order, { orderStatusId: 2, orderPaymentStatusId: 2, updatedAt: nowIso() });
+      Object.assign(order.payment, { statusId: 3, status: 'Capturado', paidAt: nowIso(), reference: `mp_${order.id}` });
+      order.history = [...(order.history ?? []), {
+        fromStatusId: 1, fromStatus: 'Pendente', toStatusId: 2, toStatus: 'Confirmado', fromPaymentStatusId: 1,
+        toPaymentStatusId: 2, toPaymentStatus: 'Pago', source: 'Provider', actorId: null, reason: 'Pagamento aprovado', changedAt: nowIso(),
+      }];
+    },
+    // Estorno integral pedido pela loja e ainda sem resultado do provedor.
+    requestRefund(customerId) {
+      const order = latest(customerId, (o) => o.orderPaymentStatusId === 2);
+      if (!order) return;
+      order.paymentOperations = [...(order.paymentOperations ?? []), {
+        id: (order.paymentOperations?.length ?? 0) + 1, kind: 2, status: 3, amount: order.totalAmount,
+        currencyCode: 'BRL', reference: null, resolutionCode: null, completedAt: null,
+      }];
+    },
+  };
+
+  return { route, control };
 }

@@ -240,3 +240,35 @@ export const listInvitations = () => request('GET', store('invitations'), opts()
 export const inviteMember = ({ email, kindId, accessRoleIds }) => request('POST', store('invitations'), opts({ email, kindId, accessRoleIds }));
 export const revokeInvitation = (id) => request('DELETE', store(`invitations/${id}`), opts());
 export const listAccessRoles = () => request('GET', store('access-roles/get-all'), opts());
+
+// ------------------------------------------------------------ INTEGRAÇÕES ---
+// Task 43. Rotas do Store (MercadoPagoController, MelhorEnvioController,
+// ProviderConnectionController), equipe com `settings.manage`. Respostas sem tokens.
+//   GET    integrations/mercado-pago               { enabled, productionAllowed, applicationId,
+//                                                    selectedProvider, selectedEnvironment, connections[] }
+//   POST   integrations/mercado-pago/oauth/start   { environment } -> { authorizationUrl, expiresAt } + cookie HttpOnly
+//   POST   integrations/mercado-pago/sandbox/connect  vendedor de teste configurado no servidor
+//   PUT    integrations/mercado-pago/selection     { provider: 'mercado-pago' | 'manual', environment }
+//   GET    integrations/mercado-pago/notifications últimas 100 pendentes/em revisão
+//   POST   integrations/melhor-envio/oauth/start   { environment } -> { authorizationUrl, expiresAt } + cookie
+//   GET    provider-connections                    metadados de todas as conexões
+//   DELETE provider-connections/{provider}/{environment}  desconexão local (apaga os tokens)
+// O OAuth termina no back, que volta para o painel com ?mercadoPago=connected ou
+// ?melhorEnvio=connected; o resultado vale pelo status autenticado, não pela URL.
+export const INTEGRATION_ENV = { SANDBOX: 1, PRODUCTION: 2 };
+const ENV_NAMES = { 1: 'Sandbox', 2: 'Production' };
+// O enum pode chegar como número ou como nome.
+export const envId = (value) => (typeof value === 'number' ? value : value === 'Production' ? 2 : 1);
+
+export const getMercadoPagoIntegration = () => request('GET', store('integrations/mercado-pago'), opts());
+export const startMercadoPagoOAuth = (environment) =>
+  request('POST', store('integrations/mercado-pago/oauth/start'), opts({ environment }));
+export const connectMercadoPagoSandbox = () => request('POST', store('integrations/mercado-pago/sandbox/connect'), opts());
+export const selectPaymentProvider = (provider, environment) =>
+  request('PUT', store('integrations/mercado-pago/selection'), opts({ provider, environment }));
+export const listMercadoPagoNotifications = () => request('GET', store('integrations/mercado-pago/notifications'), opts());
+export const startMelhorEnvioOAuth = (environment) =>
+  request('POST', store('integrations/melhor-envio/oauth/start'), opts({ environment }));
+export const listProviderConnections = () => request('GET', store('provider-connections'), opts());
+export const disconnectProvider = (provider, environment) =>
+  request('DELETE', store(`provider-connections/${provider}/${ENV_NAMES[envId(environment)]}`), opts());

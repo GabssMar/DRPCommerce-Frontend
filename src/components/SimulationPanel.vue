@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { Settings, RefreshCw, Terminal, ChevronDown, ChevronUp } from '@lucide/vue';
 import { mockTimeOffset, serverNow, setMockTimeOffset } from '../services/clock';
-import { mockDropControl } from '../services/mock/server';
+import { mockDropControl, mockStoreControl } from '../services/mock/server';
 import { requestLog } from '../services/request-log';
 import { getDropEvent } from '../services/client-api';
 import { useServerNow } from '../composables/useNow';
@@ -60,6 +60,9 @@ const forceExpire = () => mockDropControl.expire(targetEventId.value);
 const approvePayment = () => mockDropControl.approvePayment(targetEventId.value);
 const failPayment = () => mockDropControl.failPayment(targetEventId.value);
 const setStock = (mode) => mockDropControl.setStock(targetEventId.value, mode);
+// Vitrine (task 43): último pedido do cliente logado.
+const approveStorePayment = () => mockStoreControl.approvePayment();
+const requestStoreRefund = () => mockStoreControl.requestRefund();
 
 // Os dados do mock vivem na memória da aba: recarregar volta ao seed.
 const handleReset = () => {
@@ -325,6 +328,31 @@ const shiftLabel = (minutes) => `${minutes > 0 ? '+' : ''}${minutes} min`;
                 @click="failPayment"
               >
                 Recusar pagamento
+              </button>
+            </div>
+          </section>
+
+          <section class="ds-stack--3">
+            <h3 class="ds-label-caps">
+              5. Pagamento da vitrine
+            </h3>
+            <p class="ds-hint">
+              Último pedido do cliente logado. Com o Mercado Pago escolhido no painel (Integrações), aprovar faz o papel do aviso do Mercado Pago.
+            </p>
+            <div class="ds-dock__actions">
+              <button
+                type="button"
+                class="ds-btn ds-btn--secondary ds-btn--sm"
+                @click="approveStorePayment"
+              >
+                Aprovar pagamento
+              </button>
+              <button
+                type="button"
+                class="ds-btn ds-btn--ghost ds-btn--sm"
+                @click="requestStoreRefund"
+              >
+                Pedir estorno
               </button>
             </div>
           </section>

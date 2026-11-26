@@ -45,6 +45,7 @@ const ROUTES = [
   ['admin-plan', '/admin/plano/:planId'],
   // Cadastro de lojista a partir da landing page (sem sessão).
   ['admin-signup', '/admin/assinar/:planId'],
+  ['admin-integrations', '/admin/integracoes'],
   ['admin-settings', '/admin/configuracoes'],
   ['admin-settings', '/admin/configuracoes/:tab'],
 ].map(([name, pattern]) => ({ name, pattern, parts: pattern.split('/').filter(Boolean) }));
