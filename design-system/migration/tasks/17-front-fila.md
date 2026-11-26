@@ -1,6 +1,6 @@
-# [API · Front-end] Fila com dados reais: entrar, acompanhar, restaurar e sair
+# [API · Front-end] Fila com dados reais: entrar com CPF, acompanhar e sessão de compra
 
-**Depende de:** tasks 15, 12 e 13 · **Recomendado depois de:** task 06 (DS da fila)
+**Depende de:** tasks 15, 12, 13 e 16 · **Recomendado depois de:** task 06 (DS da fila)
 
 ## Tecnologias
 
@@ -23,87 +23,91 @@
 - O prazo do checkout é um contador local de 600s (`secondsToExpiry`), sem relação com o servidor.
 - Os status seguem o mock (`statusId` 1/2/3), que diverge do back-end (§3 do contrato).
 
+## Revisão de 25/11/2026
+
+O back-end reescreveu a fila (Partes 6 e 7, [FluxoComercial.md](https://github.com/joseHenrique346/DRPCommerce-Backend/blob/main/Documentation/Drop/Application/FluxoComercial.md)): entrar pede **CPF**, a vez é dada por uma **sessão de compra de 15 minutos fixos** e **não há rota para sair** da fila. Esta task foi atualizada para isso.
+
 ## Como implementar
 
-### 1. Ciclo de vida
+### 1. Rotas (cliente logado, prefixo `/api/drop/api/storefront/{slug}/drop`)
 
-| Momento | Chamada | Resultado na tela |
+| Ação | Rota | Resposta |
 |---|---|---|
-| Abrir o detalhe do drop | `getMyQueueEntry(eventId)` | `null` → CTA "Entrar na fila"; entrada → retoma o estado dela |
-| Clicar "Entrar na fila" | `joinQueue(eventId)` | inicia o polling |
-| Enquanto status ∈ {1, 2, 3} | `getQueueStatus(entryId)` a cada 3s (`usePolling`) | posição, total, estado |
-| Clicar "Sair da fila" | `leaveQueue(entryId)` | volta ao CTA inicial |
-| Status ∈ {4, 5, 6} | para o polling | estado final |
+| Entrar | `POST events/{id}/queue` `{ cpf }` | `DropQueueEntryResponse`: `id`, `dropEventId`, `position`, `queueEntryStatusId`, `enteredAt` |
+| Acompanhar / retomar | `GET events/{id}/queue` | `DropQueueStatusResponse`: `id`, `position`, `queueEntryStatusId`, `session` (`id`, `issuedAt`, `expiresAt`) ou `null` |
+| Minhas filas | `GET queue` | entradas do cliente em todos os eventos |
 
-`localStorage` deixa de guardar a entrada: a fonte é `getMyQueueEntry`.
+- Repetir a entrada devolve a mesma entrada e **não** renova o prazo.
+- Retomar após F5 ou em outra aba = `GET events/{id}/queue`. Nada de `localStorage`.
 
-### 2. Mapa status → tela (`CONTRATO-API.md` §3 + `patterns/drop-page.md`)
+### 2. CPF
 
-| `queueEntryStatusId` | Tela | Dado exibido |
-|---|---|---|
-| — (sem entrada) | "Entrar na fila" | — |
-| 1 Aguardando | posição em `.ds-stat--lg` | `position` "de `totalWaiting`" |
-| 2 Chamado | "É a sua vez", CTA "Finalizar compra" (emite `checkout`) | prazo: `checkoutDeadline − serverNow` |
-| 3 Finalizando compra | checkout em andamento (reabre o modal se foi fechado) | prazo: `checkoutDeadline − serverNow` |
-| 4 Concluído | "Pedido confirmado" | — |
-| 5 Expirado | "Sua vez expirou", com explicação e opção de voltar ao portal | — |
-| 6 Removido | volta ao CTA inicial | — |
+- Campo com máscara `000.000.000-00` e validação dos dígitos no front, só para avisar cedo; quem decide é o back.
+- O back guarda só um HMAC do CPF por loja e evento; o texto não volta. A tela não guarda o CPF em lugar nenhum.
+- O mesmo cliente não troca de CPF dentro do evento (`DropPurchase.IdentityConflict`).
+- Texto de apoio: o limite por CPF vale para o produto inteiro no evento (todas as variações somadas), e contas diferentes com o mesmo CPF dividem esse limite.
 
-O prazo **substitui** o `secondsToExpiry` local: é derivado de `checkoutDeadline` e `serverNow()`, e o `Countdown` da task 05 exibe.
+### 3. Estados (`queueEntryStatusId`, conferido em `QueueEntryStatus.cs`)
 
-### 3. Estimativa "≈ N min"
-
-`eta = position × (tempo médio entre chamadas)`, estimado no front pela variação de `position` nas últimas leituras. Sem histórico suficiente, mostrar só a posição, **nunca** um número inventado (`patterns/drop-page.md`, regra 3).
-
-### 4. Erros (`ApiError.code` → mensagem)
-
-| `code` | Mensagem / ação |
+| Status | Tela |
 |---|---|
-| `Queue.NotOpen` | "A fila abre às HH:MM" (horário do `detail` ou do evento) |
-| `Queue.SoldOut` | "Esgotou" + link para o portal |
-| `Queue.AlreadyPurchased` | "Você já comprou este drop" |
-| `Queue.CannotLeave` | recarrega o status (a entrada mudou de estado) |
-| `Network` / `Timeout` | "Reconectando…", mantendo a posição na tela; o polling continua |
-| 404 em `getQueueStatus` | entrada perdida: chama `getMyQueueEntry` de novo |
+| sem entrada | formulário de CPF + "Entrar na fila" |
+| 1 Aguardando | posição (`position`) |
+| 2 Chamado | "É a sua vez", prazo `session.expiresAt − serverNow()`, CTA para reservar (task 18) |
+| 3 Finalizando compra | reserva em andamento; mesmo prazo da sessão |
+| 4 Concluído | "Compra concluída" |
+| 5 Expirado | "Seu prazo terminou": a entrada volta ao fim da fila e recebe nova sessão quando for admitida de novo |
+| 6 Removido | volta ao formulário |
 
-### 5. Remover o acoplamento com o simulador
+- Polling de `GET events/{id}/queue` a cada 3 s nos status 1, 2, 3 e 5 (o worker do back admite e expira a cada 10 s). Para nos status 4 e 6.
+- A sessão tem **15 minutos fixos**: reservar outro SKU ou iniciar o checkout não renova. Não mostre "estender prazo".
+- Estimativa de espera só com histórico real de `position`; sem histórico, só a posição.
 
-`App.vue` não escreve mais no simulador (`updateEventSettings` com `currentPosition`/`queueStatusId`). No modo mock, quem avança a fila é o próprio `mock/drop-api.js` (task 15), como o worker da task 13 faz no back-end.
+### 4. Erros
+
+| `code` | Comportamento |
+|---|---|
+| `Drop.QueueClosed` | "A fila não está aberta", com o horário de `queueOpensAt` (task 16) |
+| `Drop.NotFound` | "Drop não encontrado" |
+| `DropPurchase.IdentityConflict` | erro no campo do CPF: "Use o mesmo CPF da sua primeira entrada neste drop" |
+| `DropPurchase.Unavailable` | "A compra deste drop não está disponível agora" |
+| 503 | fila indisponível no servidor: mensagem genérica + "Tentar de novo" |
+| rede / timeout | "Reconectando…", mantém a posição na tela; o polling continua |
+
+### 5. O que sai
+
+- "Sair da fila" e "restaurar" (não existem no back).
+- `veloce_queue_entry_*`, `secondsToExpiry` e as escritas no simulador (`updateEventSettings`) no `App.vue`.
 
 ## Critérios de aceite
 
-- [ ] Entrar, acompanhar, ser chamado, expirar e sair funcionam com `VITE_API_MODE=http`
-- [ ] Recarregar a página (ou abrir em outra aba) mantém a posição, via `getMyQueueEntry`
-- [ ] Nenhum `localStorage` de fila; nenhuma escrita no simulador a partir do `App.vue`
-- [ ] Prazo do checkout vem de `checkoutDeadline` e `serverNow()`
-- [ ] Polling de 3s para nos estados finais, pausa com a aba oculta e não pisca em erro
+- [ ] Entrar com CPF, acompanhar, ser chamado e expirar funcionam com `VITE_API_MODE=http`
+- [ ] F5 ou outra aba retomam a posição por `GET events/{id}/queue`
+- [ ] Prazo vem de `session.expiresAt` e `serverNow()`; nenhum contador local de 600 s
+- [ ] CPF não fica em `localStorage`, `sessionStorage` nem na URL
 - [ ] Todos os `code` da tabela com mensagem própria
-- [ ] Duplo clique em "Entrar na fila" não gera duas chamadas (botão em loading)
-- [ ] Continua funcionando em `VITE_API_MODE=mock`
+- [ ] Duplo clique em "Entrar na fila" não gera duas chamadas
+- [ ] Funciona em `VITE_API_MODE=mock`
 
 ## Verificação
 
 ```bash
-grep -rn "veloce_queue_entry\|updateEventSettings\|secondsToExpiry" src/ | grep -v "services/mock\|SimulationPanel"   # vazio
+grep -rn "veloce_queue_entry\|updateEventSettings\|secondsToExpiry\|leaveQueue" src/ | grep -v "services/mock\|SimulationPanel"   # vazio
 npm run lint
 ```
 
-Manual (modo http, tasks 10–13 no back-end, evento com 2 unidades): abrir três abas com `?customer=1`, `2` e `3`, entrar na fila nas três, acompanhar as posições, confirmar que duas são chamadas; deixar uma expirar e ver a terceira ser chamada; recarregar uma aba no meio e confirmar que a posição volta.
-
 ## Referências
 
-- `CONTRATO-API.md` §3 e §4 (Fila)
+- `FluxoComercial.md` (back-end), seção "Fila e compra"
+- Task 16 (detalhe do evento) e task 18 (reserva e checkout)
 - `design-system/patterns/drop-page.md`: máquina de estados
-- Tasks 12 e 13: regras do back-end
 
 ## Para o Claude Code
 
 ```
-Leia frontend/design-system/migration/tasks/CONTRATO-API.md §3–§4 (Fila) e a task 15.
-Conecte QueueStatus.vue e o estado de fila do App.vue a getMyQueueEntry, joinQueue,
-getQueueStatus (usePolling de 3s, parando nos status 4/5/6) e leaveQueue. Mapeie
-queueEntryStatusId conforme a tabela da task; derive o prazo de checkoutDeadline e
-serverNow(), removendo secondsToExpiry; trate os códigos de ApiError listados. Remova o
-localStorage de fila e as escritas no simulador (updateEventSettings) do App.vue. Mantenha
-os eventos join-queue e checkout e o visual das tasks de DS. Não crie bloco <style>.
+Leia a task inteira. Crie joinDropQueue(eventId, cpf) e getDropQueueStatus(eventId) em client-api.js
+(storefront/{slug}/drop/events/{id}/queue) e conecte QueueStatus.vue e o App.vue a elas: formulário de
+CPF, polling de 3 s, prazo de session.expiresAt com serverNow(), erros da tabela. Remova "sair da fila",
+o localStorage de fila e as escritas no simulador. Atualize o mock nas mesmas rotas, com sessão de
+15 min. Não crie bloco <style>.
 ```

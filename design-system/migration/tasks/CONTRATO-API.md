@@ -252,7 +252,7 @@ Catálogo regular, sem fila. Os dados vêm do **StoreCommerce** (pelo Gateway em
 | Estoque e badge (≤ 5 "Últimas unidades", 0 "Esgotado"); limite de 10 por pedido | idem | `stockQuantity` | 🆕 |
 | Imagem | idem | `imageUrl` (opcional; sem imagem, placeholder) | 🆕 |
 | Detalhe do produto (`StoreProductDetail.vue`) | `GET /api/store/products/get-by-id/{id}` | mesmos campos da lista | 🆕 (hoje usa o item já carregado da lista) |
-| Sacola (`StoreCart.vue`) | — | só no front: `[{ productId, quantity }]` no `localStorage` (`veloce_store_bag`) | sem endpoint: carrinho não é persistido no back |
+| Sacola (`StoreCart.vue`) | `GET/POST/PUT/DELETE /api/store/api/storefront/{slug}/cart[...]` | `CartResponse`: `items[]` (id do item, SKU, `availability`, `isSelected`, `requiresDecision`), `summary` (totais dos selecionados, `canCheckout`, `coupon`) | ✅ task 30 (ver `storefront-api.js`) |
 | Finalizar compra da sacola | `POST /api/store/orders/add` | body `{ items: [{ productId, quantity }] }` → `id`, `items[]`, `subTotal`, `shippingCost`, `totalAmount` | 🆕: servidor valida estoque (409 se faltar) e calcula totais |
 
 > Os nomes de campo seguem o que foi levantado do `Product` do StoreCommerce (`productId`, `name`, `sku`, `isActive`). `category`, `description`, `price`, `stockQuantity` e `imageUrl` são propostas: confirmar com o back-end ao criar o endpoint.

@@ -1,6 +1,6 @@
 # [API · Front-end] Portal, detalhe do drop e estoque com dados reais
 
-**Depende de:** tasks 15 e 11 · **Recomendado depois de:** tasks 02, 03, 04 e 05 (DS das mesmas telas, para evitar conflito de PR)
+**Depende de:** tasks 15, 11 e 44 (o produto do drop vem do catálogo do Drop) · **Recomendado depois de:** tasks 02, 03, 04 e 05
 
 ## Tecnologias
 
@@ -23,58 +23,53 @@ As telas de **leitura**: portal com a lista de drops, detalhe do drop (produto, 
 - O badge de status e o countdown usam o tempo virtual do simulador (`getVirtualTime`).
 - Com o mock, `unitsAllocated` vem do evento. Na API real vem de `DropProduct` (decisão da task 11).
 
+## Revisão de 25/11/2026
+
+O back-end reescreveu o fluxo do drop (Partes 6 e 7, [FluxoComercial.md](https://github.com/joseHenrique346/DRPCommerce-Backend/blob/main/Documentation/Drop/Application/FluxoComercial.md)). Esta task foi atualizada para as rotas novas: o detalhe público já traz os produtos do evento (participações), as variações com saldo e o preço. O CRUD de `drop-events`/`drop-products` não é mais a fonte da vitrine do drop. O produto do drop vem do **catálogo do Drop** (task 44), e nunca é um produto ativo da vitrine.
+
 ## Como implementar
 
-### 1. Portal (`EventPortal.vue` / `App.vue`)
+### 1. Rotas (anônimas, prefixo `/api/drop/api/storefront/{slug}/drop`)
 
-| Na tela | De onde vem |
-|---|---|
-| lista de cards | `listPublicEvents()` |
-| nome, descrição, imagem, preço | `name`, `description`, `coverImageUrl`, `price` |
-| badge | `dropEventStatusId` + datas, com o mapa de `CONTRATO-API.md` §3 e `components/badge.md` |
-| "Abre em HH:MM" | `queueOpensAt`, formatado em `pt-BR`, fuso local |
+| Tela | Rota | Resposta |
+|---|---|---|
+| Portal | `GET events` | `DropStorefrontEventSummary[]`: `id`, `name`, `slug`, `description`, `price`, `coverImageUrl`, `dropStartsAt`, `dropEndsAt`, `requiresRegistration` |
+| Detalhe e estoque | `GET events/{id}` | `DropStorefrontEventResponse`: datas (`registrationStartsAt/EndsAt`, `queueOpensAt`, `dropStartsAt`, `dropEndsAt`), `purchaseWindowMinutes`, `bannerImageUrl` e `products[]` |
+| `products[]` (participação) | — | `participationId`, `name`, `description`, `maxPerCustomer`, `concentrationWarning`, `variants[]` |
+| `variants[]` | — | `id`, `sku`, `optionsJson`, `price`, `available` |
 
-Estados de tela (já montados na task 03), agora alimentados por erro real: `ApiError` com `status 0` → "Sem conexão" + "Tentar de novo"; lista vazia → `.ds-empty`.
+- Evento que não é público devolve **404**: estado "Drop não encontrado".
+- A resposta pública não traz `dropEventStatusId`: a fase sai das datas comparadas com `serverNow()` (inscrição → fila aberta → em andamento → encerrado). "Esgotado" = todas as variações com `available` 0.
+- `participationId` e `variant.id` são os ids usados na reserva (task 18). Não use `dropProductId` nem o `productId` da vitrine.
 
-### 2. Detalhe do drop
+### 2. Portal (`EventPortal.vue`)
 
-| Na tela | De onde vem |
-|---|---|
-| dados do evento | `getEvent(id)` |
-| imagem principal | `bannerImageUrl` → fallback `coverImageUrl` |
-| produto e preço | `getEventProducts(id)[0]`; o `id` do produto é o `dropProductId` usado na reserva (task 18) |
-| countdown | `queueOpensAt`, `dropStartsAt`, `dropEndsAt` comparados com **`serverNow()`** |
-| fase | `dropEventStatusId` |
+Cards com os campos do resumo e badge pela fase calculada. O resumo não traz `queueOpensAt`: o "Abre em HH:MM" só aparece no detalhe.
 
-- `404` em `getEvent` → estado "Drop não encontrado", com botão para voltar ao portal.
-- Os dados do evento e os do produto ficam em refs separados, sem o merge `{ ...eventData, price }`.
-- `Countdown.vue` recebe `now` (de `serverNow()`, atualizado a cada 1s) em vez de `virtualTime`.
+### 3. Detalhe do drop
 
-### 3. Estoque (`StockProgress.vue`)
+- Imagem: `bannerImageUrl` → `coverImageUrl`.
+- Um bloco por participação, com o seletor de variações da task 29 (`VariantPicker`, opções de `optionsJson`), preço e saldo da variação escolhida.
+- "Limite de N por CPF neste drop" com `maxPerCustomer`; a soma vale para todas as variações do mesmo produto.
+- `concentrationWarning`: aviso discreto de que poucas pessoas podem levar o estoque inteiro. Só informativo.
+- Countdown com `serverNow()`.
 
-```js
-const { data: products, isRefreshing, error } =
-  usePolling(() => api.getEventProducts(eventId.value), 4000, { pauseWhenHidden: true })
-```
+### 4. Estoque
 
-- Props: `unitsAllocated` e `unitsSold` do produto (fonte definida na task 11).
-- Polling **só** com o drop em 4 ou 5 (fila aberta / ativo). Fora disso, uma leitura só.
-- Erro no polling não zera a barra: mantém o último valor e mostra o indicador discreto de "atualizando".
-- Ao chegar em 6 (Esgotado), para o polling e mostra o estado esgotado.
+`usePolling(() => getDropEvent(id), 4000, { pauseWhenHidden: true })` só na fase "fila aberta" ou "em andamento". Erro no polling mantém o último saldo.
 
-### 4. Remover dependências do simulador
+### 5. Remover dependências do simulador
 
-`getVirtualTime` e `subscribeToSimState` saem de `App.vue`, `EventPortal.vue` e `Countdown.vue`. O tempo vem de `serverNow()`, que no modo mock já é o tempo virtual (task 15).
+`getVirtualTime` e `subscribeToSimState` saem de `App.vue`, `EventPortal.vue` e `Countdown.vue`.
 
 ## Critérios de aceite
 
-- [ ] Portal, detalhe e estoque funcionam com `VITE_API_MODE=http` contra o back-end real
-- [ ] Continuam funcionando com `VITE_API_MODE=mock`
-- [ ] Nenhum campo lido fora do contrato (`CONTRATO-API.md` §4: Portal, Detalhe, Estoque)
-- [ ] Countdown usa `serverNow()`; mudar o relógio do computador não altera o countdown no modo http
-- [ ] Estoque atualiza a cada 4s só em drop ativo, pausa com a aba oculta e não pisca em erro
-- [ ] Estados de erro, vazio e "não encontrado" testados derrubando o Gateway e usando id inexistente
-- [ ] Nenhum `getVirtualTime` / `subscribeToSimState` fora de `services/mock/` e do `SimulationPanel`
+- [ ] Portal e detalhe usam só `GET events` e `GET events/{id}` (nada de CRUD de `drop-events`/`drop-products`)
+- [ ] Participações, variações, preço e saldo vêm do detalhe público
+- [ ] Fase calculada pelas datas com `serverNow()`; mudar o relógio do computador não altera nada no modo http
+- [ ] Estoque atualiza a cada 4 s só com fila aberta ou drop em andamento, e não pisca em erro
+- [ ] 404, vazio e erro de rede com estado próprio
+- [ ] Funciona em `VITE_API_MODE=mock` e `http`
 
 ## Verificação
 
@@ -83,21 +78,18 @@ grep -rn "getVirtualTime\|subscribeToSimState" src/ | grep -v "services/mock\|Si
 npm run lint
 ```
 
-Manual (modo http, back-end com as tasks 10, 11 e 13): abrir o portal, entrar num drop, alterar `units_sold` no banco e ver a barra atualizar em até 4s; parar o Gateway e ver o estado de erro; subir de novo e clicar em "Tentar de novo".
-
 ## Referências
 
-- `CONTRATO-API.md` §3 e §4 (Portal, Detalhe do drop, Estoque)
-- `design-system/patterns/states.md`, `components/badge.md`, `components/progress-chart.md`
+- `FluxoComercial.md` (back-end) e task 44 (catálogo do Drop)
+- Task 29 (`VariantPicker`, `variants.js`)
+- `design-system/patterns/drop-page.md`, `patterns/states.md`
 
 ## Para o Claude Code
 
 ```
-Leia frontend/design-system/migration/tasks/CONTRATO-API.md §3–§4 e a task 15. Conecte
-EventPortal.vue, App.vue (detalhe), ProductDetails.vue, Countdown.vue e StockProgress.vue
-às funções listPublicEvents, getEvent e getEventProducts de src/services/index.js,
-exatamente com os campos do contrato. Countdown com serverNow(); estoque com usePolling
-de 4s só com dropEventStatusId 4 ou 5; estados de erro, vazio e 404 alimentados por
-ApiError. Remova getVirtualTime/subscribeToSimState fora do mock e do SimulationPanel.
-Não mude o visual (é das tasks de DS) nem crie bloco <style>.
+Leia a task inteira. Crie getDropEvent(id) em client-api.js (GET storefront/{slug}/drop/events/{id})
+e use-o com listPublicDrops no portal e no detalhe. Fase pelas datas com serverNow(); participações
+com VariantPicker (optionsJson), preço, saldo (available), maxPerCustomer e concentrationWarning.
+Estoque com usePolling de 4 s só com fila aberta/em andamento. Atualize o mock nas mesmas rotas.
+Remova getVirtualTime/subscribeToSimState fora do mock e do SimulationPanel. Não crie bloco <style>.
 ```
