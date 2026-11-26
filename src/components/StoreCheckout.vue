@@ -396,14 +396,14 @@ const payment = computed(() => confirmed.value?.payment ?? null);
                   :key="a.id"
                   class="ds-check ds-check--card ds-check--top"
                 >
-                  <span class="ds-cluster ds-cluster--2 ds-align-start">
+                  <span class="ds-cluster ds-cluster--2 ds-cluster--nowrap ds-align-start">
                     <input
                       type="radio"
                       name="sc-address"
                       :checked="destination.kind === 'saved' && destination.addressId === a.id"
                       @change="chooseSaved(a.id)"
                     >
-                    <span class="ds-stack--1">
+                    <span class="ds-stack--1 ds-min-0">
                       <span>{{ a.label || 'Endereço' }}{{ a.isDefault ? ' · padrão' : '' }}</span>
                       <span class="ds-text-xs ds-text-secondary">{{ a.addressLine }} · {{ a.city }}, {{ ufOf(a.stateId) }} · {{ a.zipCode }}</span>
                     </span>
@@ -413,7 +413,7 @@ const payment = computed(() => confirmed.value?.payment ?? null);
                   v-if="!addresses.length"
                   class="ds-check ds-check--card ds-check--top"
                 >
-                  <span class="ds-cluster ds-cluster--2 ds-align-start">
+                  <span class="ds-cluster ds-cluster--2 ds-cluster--nowrap ds-align-start">
                     <input
                       type="radio"
                       name="sc-address"
@@ -421,7 +421,7 @@ const payment = computed(() => confirmed.value?.payment ?? null);
                       :disabled="!profileComplete"
                       @change="destination.kind = 'profile'"
                     >
-                    <span class="ds-stack--1">
+                    <span class="ds-stack--1 ds-min-0">
                       <span>Endereço do cadastro</span>
                       <span class="ds-text-xs ds-text-secondary">{{ profileComplete ? `${me.addressLine} · ${me.city}, ${ufOf(me.stateId)} · ${me.zipCode}` : 'Cadastro sem endereço completo.' }}</span>
                     </span>
