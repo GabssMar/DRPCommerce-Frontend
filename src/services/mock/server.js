@@ -1,11 +1,18 @@
 import { createSeed, SIGNED_IN_CUSTOMER_ID, SIGNED_IN_EMPLOYEE_ID } from './seed';
 import { toEntity } from '../resources';
 import { createPlansMock } from './plans';
+import { createCatalogMock } from './catalog';
+import { createAddressesMock } from './addresses';
+import { createCartMock } from './cart';
+import { createCheckoutMock } from './checkout';
+import { createDropQueueMock } from './drop-queue';
+import { serverNow } from '../clock';
+import { getAccessToken, REALMS } from '../session';
 
 // Servidor falso que responde nas MESMAS rotas do Gateway (/api/store/api/...,
 // /api/drop/api/...), com os mesmos formatos:
 //   - CRUD (BaseController): envelope Result<T>; add/update devolvem lista.
-//   - storefront/*, auth/*, enterprises/*: objeto cru (como o back faz).
+//   - storefront/{slug}/*, auth/*, enterprises/*: objeto cru (como o back faz).
 //   - erros em application/problem+json, com `code`.
 // Os dados vivem só na memória da aba: um F5 volta ao seed.
 
@@ -29,6 +36,30 @@ const problem = (status, code, title) => ({
 });
 
 const nowIso = () => new Date().toISOString();
+
+const catalog = createCatalogMock({ data: () => data(), ok: (content) => ok(content), problem: (...a) => problem(...a) });
+
+const addresses = createAddressesMock({ data: () => data(), ok: (content) => ok(content), problem: (...a) => problem(...a) });
+
+const cart = createCartMock({ data: () => data(), ok: (content) => ok(content), problem: (...a) => problem(...a), catalog });
+
+const checkout = createCheckoutMock({
+  data: () => data(), ok: (content) => ok(content), problem: (...a) => problem(...a), cart, catalog,
+  addressesOf: (customerId) => addresses.route('GET', 'me/addresses', null, { realm: 'storefront', id: customerId })?.data?.content ?? [],
+});
+
+const dropQueue = createDropQueueMock({ data: () => data(), raw: (body, status) => raw(body, status), problem: (...a) => problem(...a), now: serverNow });
+
+const signedCustomerId = () => Number(String(getAccessToken(REALMS.storefront) ?? '').match(/customer-(\d+)$/)?.[1]) || null;
+// Atalhos do SimulationPanel (só desenvolvimento): fila e pagamento do cliente logado e estoque do drop.
+export const mockDropControl = {
+  setPosition: (eventId, position) => signedCustomerId() && dropQueue.control.setPosition(eventId, signedCustomerId(), position),
+  admit: (eventId) => signedCustomerId() && dropQueue.control.admit(eventId, signedCustomerId()),
+  expire: (eventId) => signedCustomerId() && dropQueue.control.expire(eventId, signedCustomerId()),
+  approvePayment: (eventId) => signedCustomerId() && dropQueue.control.approvePayment(eventId, signedCustomerId()),
+  failPayment: (eventId) => signedCustomerId() && dropQueue.control.failPayment(eventId, signedCustomerId()),
+  setStock: (eventId, mode) => dropQueue.control.setStock(eventId, mode),
+};
 
 const plans = createPlansMock({ data: () => data(), raw: (body, status) => raw(body, status), problem: (...a) => problem(...a), nowIso });
 
@@ -178,24 +209,11 @@ function storeStorefront(method, path, body, who) {
     Object.assign(me, { isActive: false, isDeleted: true, deletedAt: nowIso() });
     return noContent();
   }
-  if (path === 'orders' && method === 'GET') {
-    return raw(d['store/orders'].filter((o) => o.customerId === me.id).sort((a, b) => b.id - a.id).map((o) => ({
-      id: o.id, orderStatusId: o.orderStatusId, orderPaymentStatusId: o.orderPaymentStatusId, totalAmount: o.totalAmount, createdAt: o.createdAt,
-    })));
-  }
-  const orderMatch = path.match(/^orders\/(\d+)$/);
-  if (orderMatch && method === 'GET') {
-    const o = d['store/orders'].find((x) => x.id === Number(orderMatch[1]) && x.customerId === me.id);
-    if (!o) return problem(404, 'Order.NotFound', 'Pedido não encontrado.');
-    return raw({
-      id: o.id, orderStatusId: o.orderStatusId, orderPaymentStatusId: o.orderPaymentStatusId, totalAmount: o.totalAmount, createdAt: o.createdAt,
-      items: d['store/order-items'].filter((i) => i.orderId === o.id).map((i) => ({ itemName: i.itemName, quantity: i.quantity, unitPrice: i.unitPrice, totalPrice: i.totalPrice })),
-    });
-  }
+  // Pedidos e checkout: mock/checkout.js (task 32).
   return null;
 }
 
-function dropStorefront(method, path, who) {
+function dropStorefront(method, path, who, body) {
   const d = data();
   if (path === 'events' && method === 'GET') {
     return raw(d['drop/drop-events'].filter((e) => e.isPublic && !e.isDeleted)
@@ -205,6 +223,46 @@ function dropStorefront(method, path, who) {
         dropStartsAt: e.dropStartsAt, dropEndsAt: e.dropEndsAt, requiresRegistration: e.requiresRegistration,
       })));
   }
+  // Detalhe público (task 16), como DropStorefrontEventResponse: uma participação por
+  // produto do evento, com uma variação por SKU e o saldo livre (alocado − vendido − reservado).
+  const eventMatch = path.match(/^events\/(\d+)$/);
+  if (eventMatch && method === 'GET') {
+    const ev = d['drop/drop-events'].find((e) => e.id === Number(eventMatch[1]) && e.isPublic && !e.isDeleted);
+    if (!ev) return problem(404, 'Drop.NotFound', 'Evento não encontrado.');
+    const rows = d['drop/drop-products'].filter((p) => p.dropEventId === ev.id && p.isActive && !p.isDeleted);
+    const reserved = (rowId) => d['drop/drop-reservations']
+      .filter((r) => r.dropProductId === rowId && r.dropReservationStatusId === 1 && !r.isDeleted)
+      .reduce((sum, r) => sum + r.quantity, 0);
+    const byProduct = new Map();
+    rows.forEach((row) => byProduct.set(row.productId, [...(byProduct.get(row.productId) ?? []), row]));
+    const products = [...byProduct.entries()].map(([productId, skus]) => {
+      const base = d['store/products'].find((p) => p.id === productId);
+      // SKU com sufixo (VCX-39, HHV2-M) vira a opção Tamanho; SKU único não tem opções.
+      const variants = skus.sort((a, b) => a.id - b.id).map((row) => ({
+        id: row.id, sku: row.sku,
+        optionsJson: JSON.stringify(skus.length > 1 ? { Tamanho: row.sku.split('-').pop() } : {}),
+        price: row.price, available: Math.max(0, row.unitsAllocated - row.unitsSold - reserved(row.id)),
+      }));
+      const maxPerCustomer = Math.max(...skus.map((row) => row.maxPerCustomer ?? 1));
+      const total = variants.reduce((sum, v) => sum + v.available, 0);
+      return {
+        participationId: skus[0].id, name: base?.name ?? ev.name, description: base?.description ?? ev.description,
+        maxPerCustomer, concentrationWarning: total > 0 && maxPerCustomer >= total, variants,
+      };
+    });
+    return raw({
+      id: ev.id, name: ev.name, slug: ev.slug, description: ev.description, coverImageUrl: ev.coverImageUrl,
+      bannerImageUrl: ev.bannerImageUrl, requiresRegistration: ev.requiresRegistration,
+      registrationStartsAt: ev.registrationStartsAt, registrationEndsAt: ev.registrationEndsAt,
+      queueOpensAt: ev.queueOpensAt, dropStartsAt: ev.dropStartsAt, dropEndsAt: ev.dropEndsAt,
+      purchaseWindowMinutes: 15, products,
+    });
+  }
+
+  // Fila, reserva e compra (tasks 17 e 18): mock/drop-queue.js.
+  const queue = dropQueue.route(method, path, body, who);
+  if (queue) return queue;
+
   if (!who || who.realm !== 'storefront') return problem(401, 'Security.Unauthenticated', 'Autenticação necessária.');
   const mine = (rows) => rows.filter((r) => r.customerId === who.id && !r.isDeleted);
 
@@ -239,19 +297,8 @@ function dropStorefront(method, path, who) {
       id: w.id, dropEventId: w.dropEventId, dropProductId: w.dropProductId, position: w.position, waitlistEntryStatusId: w.waitlistEntryStatusId,
     })));
   }
-  if (path === 'queue') {
-    return raw(mine(d['drop/queue-entries']).map((q) => ({
-      id: q.id, dropEventId: q.dropEventId, position: q.position, queueEntryStatusId: q.queueEntryStatusId, enteredAt: q.enteredAt,
-    })));
-  }
   if (path === 'notifications') {
     return raw(mine(d['drop/drop-notifications']).map((n) => ({ id: n.id, subject: n.subject, body: n.body, scheduledAt: n.scheduledAt })));
-  }
-  if (path === 'reservations') {
-    return raw(mine(d['drop/drop-reservations']).map((r) => ({
-      id: r.id, dropEventId: r.dropEventId, dropProductId: r.dropProductId, quantity: r.quantity, totalAmount: r.totalAmount,
-      dropReservationStatusId: r.dropReservationStatusId, expiresAt: r.expiresAt,
-    })));
   }
   if (path === 'orders') {
     return raw(mine(d['drop/drop-orders']).map((o) => ({
@@ -383,6 +430,9 @@ function dropBackoffice(method, path, body, who) {
 
 // ------------------------------------------------------------------ ROTEADOR ---
 
+const RESERVED_SLUGS = ['www', 'api', 'admin', 'backoffice', 'mail', 'internal', 'swagger', 'openapi'];
+const isStorefrontSlug = (slug) => /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(slug) && !RESERVED_SLUGS.includes(slug);
+
 /**
  * Responde como o Gateway responderia.
  * @returns {{ status: number, data: unknown }}
@@ -395,14 +445,22 @@ export function mockFetch(method, url, body, headers) {
   if (!match) return problem(404, 'Route.NotFound', `Rota inexistente: ${path}`);
   const [, service, rest] = match;
 
-  if (service === 'store' && rest.startsWith('storefront/')) {
-    return storeStorefront(method, rest.slice('storefront/'.length), body, who)
-      ?? problem(404, 'Route.NotFound', `Rota inexistente: ${path}`);
+  // Storefront: /storefront/{slug}/... O mock tem uma loja só e aceita qualquer
+  // slug válido (StorefrontSlug.Normalize); slug ausente ou inválido é 404, como no back.
+  const storefront = rest.match(/^storefront\/([^/]+)\/(.+)$/);
+  if (storefront) {
+    const [, slug, sfPath] = storefront;
+    if (!isStorefrontSlug(decodeURIComponent(slug))) return problem(404, 'Enterprise.Unavailable', 'Loja indisponível.');
+    const result = service === 'store'
+      ? catalog.route(method, sfPath, new URLSearchParams(url.split('?')[1] ?? ''))
+        ?? addresses.route(method, sfPath, body, who)
+        ?? cart.route(method, sfPath, body, who, new URLSearchParams(url.split('?')[1] ?? ''))
+        ?? checkout.route(method, sfPath, body, who, new URLSearchParams(url.split('?')[1] ?? ''))
+        ?? storeStorefront(method, sfPath, body, who)
+      : sfPath.startsWith('drop/') && dropStorefront(method, sfPath.slice('drop/'.length), who, body);
+    return result || problem(404, 'Route.NotFound', `Rota inexistente: ${path}`);
   }
-  if (service === 'drop' && rest.startsWith('storefront/drop/')) {
-    return dropStorefront(method, rest.slice('storefront/drop/'.length), who)
-      ?? problem(404, 'Route.NotFound', `Rota inexistente: ${path}`);
-  }
+  if (rest.startsWith('storefront/')) return problem(404, 'Enterprise.Unavailable', 'Loja indisponível.');
 
   if (service === 'store') {
     const special = storeBackoffice(method, rest, body, who);

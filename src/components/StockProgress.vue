@@ -1,26 +1,36 @@
 <script setup>
 import { computed } from 'vue';
 
+// Estoque do drop (task 16). O detalhe público só traz o saldo livre de cada variação
+// (`available`), não o total alocado nem o vendido. Sem total, a tela mostra o saldo e
+// "Últimas unidades"; a barra de proporção só aparece quando o total é conhecido.
 const props = defineProps({
-  unitsAllocated: { type: Number, default: 100 },
-  unitsSold: { type: Number, default: 0 },
+  available: { type: Number, default: null },
+  total: { type: Number, default: null },
+  // Atualizando em segundo plano (polling): indicador discreto, sem esconder o número.
+  isRefreshing: { type: Boolean, default: false },
 });
 
-// Regra fixa de components/progress-chart.md: ≤ 20% restante vira coral. A cor é o alerta.
+// components/progress-chart.md: ≤ 20% restante vira coral. Sem total: ≤ 5 unidades.
 const CRITICAL_PCT = 20;
+const LOW_STOCK = 5;
 
 const integerBR = new Intl.NumberFormat('pt-BR');
 
-const total = computed(() => Math.max(1, props.unitsAllocated));
-const sold = computed(() => Math.max(0, Math.min(props.unitsSold, total.value)));
-const available = computed(() => total.value - sold.value);
-const pctAvailable = computed(() => Math.round((available.value / total.value) * 100));
-const isSoldOut = computed(() => available.value === 0);
-const isCritical = computed(() => pctAvailable.value <= CRITICAL_PCT);
+const known = computed(() => props.available != null);
+const left = computed(() => Math.max(0, props.available ?? 0));
+const hasTotal = computed(() => props.total != null && props.total > 0);
+const pctAvailable = computed(() => (hasTotal.value ? Math.round((left.value / props.total) * 100) : null));
+const isSoldOut = computed(() => known.value && left.value === 0);
+const isCritical = computed(() => known.value && !isSoldOut.value
+  && (hasTotal.value ? pctAvailable.value <= CRITICAL_PCT : left.value <= LOW_STOCK));
 </script>
 
 <template>
-  <article class="ds-card">
+  <article
+    class="ds-card"
+    :aria-busy="isRefreshing"
+  >
     <header class="ds-card__header">
       <h2 class="ds-card__title">
         Estoque
@@ -38,21 +48,22 @@ const isCritical = computed(() => pctAvailable.value <= CRITICAL_PCT);
     <div class="ds-stack--4">
       <div :class="['ds-stat', { 'ds-stat--critical': isCritical }]">
         <div class="ds-stat__value">
-          {{ integerBR.format(available) }}<span class="ds-stat__unit">un. disponíveis</span>
+          {{ known ? integerBR.format(left) : '—' }}<span class="ds-stat__unit">un. disponíveis</span>
         </div>
         <div class="ds-stat__label">
-          de {{ integerBR.format(total) }} · {{ integerBR.format(sold) }} vendidas
+          {{ hasTotal ? `de ${integerBR.format(total)}` : 'saldo livre agora, somando todas as opções' }}
         </div>
       </div>
 
       <div
+        v-if="hasTotal"
         :class="['ds-meter', { 'ds-meter--critical': isCritical }]"
         role="progressbar"
         aria-label="Estoque restante"
         :aria-valuenow="pctAvailable"
         aria-valuemin="0"
         aria-valuemax="100"
-        :aria-valuetext="`${available} de ${total} unidades disponíveis`"
+        :aria-valuetext="`${left} de ${total} unidades disponíveis`"
       >
         <div
           class="ds-meter__fill"

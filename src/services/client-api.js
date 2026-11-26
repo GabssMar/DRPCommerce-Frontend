@@ -1,6 +1,8 @@
-import { DROP_BASE, STORE_BASE } from './config';
+import { DROP_BASE, STORE_BASE, storefrontPath } from './config';
 import { request } from './http';
 import { crud } from './resources';
+import { toPage } from './paging';
+import { cpfDigits } from './cpf';
 import { REALMS } from './session';
 import { ORDER_STATUS_EXCLUDED } from './status';
 
@@ -14,8 +16,8 @@ const realm = REALMS.storefront;
 const opts = (body) => ({ realm, body });
 
 const sf = {
-  store: (path) => `${STORE_BASE}/storefront/${path}`,
-  drop: (path) => `${DROP_BASE}/storefront/drop/${path}`,
+  store: (path) => storefrontPath(STORE_BASE, path),
+  drop: (path) => storefrontPath(DROP_BASE, `drop/${path}`),
 };
 
 const dropEvents = crud('drop/drop-events', { realm });
@@ -26,13 +28,7 @@ const dropRegistrations = crud('drop/drop-registrations', { realm });
 const dropNotifications = crud('drop/drop-notifications', { realm });
 const dropOrders = crud('drop/drop-orders', { realm });
 const waitlist = crud('drop/waitlist-entries', { realm });
-const storeOrders = crud('store/orders', { realm });
-const orderItems = crud('store/order-items', { realm });
-const transactions = crud('store/transactions', { realm });
-const coupons = crud('store/coupons', { realm });
 const documents = crud('store/documents', { realm });
-const shipments = crud('store/shipments', { realm });
-const invoices = crud('store/invoices', { realm });
 
 // ------------------------------------------------------------------ CONTA ---
 
@@ -61,7 +57,108 @@ export const sendDocument = (customerId, { number, fileUrl }) =>
 
 // ------------------------------------------------------------------ DROPS ---
 
-export const listPublicDrops = () => request('GET', sf.drop('events'), opts());
+// Portal e detalhe do drop (task 16). Rotas públicas do DROP (StorefrontDropEventController):
+//   GET storefront/{slug}/drop/events       DropStorefrontEventSummary[] (sem estoque nem horário da fila)
+//   GET storefront/{slug}/drop/events/{id}  DropStorefrontEventResponse: datas e products[] (participações)
+//     com variants[] { id, sku, optionsJson, price, available }. 404 = evento não público.
+// A resposta pública não traz status: a fase sai das datas comparadas com serverNow().
+export const listPublicDrops = () => request('GET', sf.drop('events'), { realm: null });
+
+const parseOptions = (json) => {
+  try {
+    const parsed = JSON.parse(json || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+// Variação no formato do VariantPicker (task 29): attributes + canPurchase.
+const toDropVariant = (variant) => ({
+  ...variant,
+  attributes: parseOptions(variant.optionsJson),
+  availableQuantity: variant.available,
+  canPurchase: variant.available > 0,
+});
+
+export const getDropEvent = async (id) => {
+  const event = await request('GET', sf.drop(`events/${id}`), { realm: null });
+  const products = (event?.products ?? []).map((product) => ({
+    ...product,
+    variants: (product.variants ?? []).map(toDropVariant),
+  }));
+  const available = products.reduce((sum, p) => sum + p.variants.reduce((s, v) => s + Math.max(0, v.available), 0), 0);
+  const prices = products.flatMap((p) => p.variants.map((v) => v.price));
+  return {
+    ...event,
+    products,
+    available,
+    soldOut: products.length > 0 && available === 0,
+    minPrice: prices.length ? Math.min(...prices) : null,
+    maxPrice: prices.length ? Math.max(...prices) : null,
+  };
+};
+
+// ------------------------------------------------------------ FILA DO DROP ---
+// Fila (task 17). Rotas do DROP (StorefrontQueueEntryController), cliente logado:
+//   POST storefront/{slug}/drop/events/{id}/queue { cpf } -> DropQueueStatusResponse
+//   GET  storefront/{slug}/drop/events/{id}/queue         -> DropQueueStatusResponse
+//        { id, position, queueEntryStatusId, session: { id, issuedAt, expiresAt } | null }
+//        404 Drop.QueueNotFound = o cliente ainda não entrou.
+// Não há rota para sair: quem expira (5) ou foi removido (6) entra de novo e vai
+// para o fim da fila, com o MESMO CPF (a identidade fica presa ao evento).
+export const QUEUE_STATUS = { WAITING: 1, CALLED: 2, CHECKING_OUT: 3, COMPLETED: 4, EXPIRED: 5, REMOVED: 6 };
+
+export const getDropQueueStatus = async (eventId) => {
+  try {
+    return await request('GET', sf.drop(`events/${eventId}/queue`), opts());
+  } catch (err) {
+    if (err?.kind === 'not-found' && (!err.code || err.code === 'Drop.QueueNotFound')) return null;
+    throw err;
+  }
+};
+
+export const joinDropQueue = (eventId, cpf) =>
+  request('POST', sf.drop(`events/${eventId}/queue`), opts({ cpf: cpfDigits(cpf) }));
+
+// ---------------------------------------------------------- COMPRA DO DROP ---
+// Reserva e pagamento (task 18). Rotas do DROP (StorefrontQueueEntryController,
+// StorefrontDropReservationController, StorefrontDropPurchaseController), cliente logado:
+//   POST storefront/{slug}/drop/events/{id}/reservations
+//        { participationId, sessionId, idempotencyKey, lines: [{ variantId, quantity }] } -> DropReservationResponse
+//   GET  storefront/{slug}/drop/reservations(/{id})        -> resumos (com status) · reserva com linhas
+//   POST storefront/{slug}/drop/reservations/{id}/checkout -> DropPurchaseResponse (idempotente pela reserva)
+//   GET  storefront/{slug}/drop/purchases/{id}             -> DropPurchaseResponse
+// A reserva vive dentro da sessão da fila (mesmo prazo, 15 min fixos). O checkout cria o
+// pedido com o endereço do cadastro e devolve a URL do Mercado Pago da loja; voltar dessa
+// página NÃO confirma a compra: quem confirma é o back, pelo webhook.
+export const RESERVATION_STATUS = { ACTIVE: 1, CONFIRMED: 2, EXPIRED: 3, CANCELLED: 4 };
+export const DROP_PAYMENT_STATUS = { PENDING: 1, PAID: 2, PARTIAL_REFUND: 3, FULL_REFUND: 4, FAILED: 5 };
+
+export const reserveDrop = (eventId, { participationId, sessionId, idempotencyKey, lines }) =>
+  request('POST', sf.drop(`events/${eventId}/reservations`), opts({
+    participationId,
+    sessionId,
+    idempotencyKey,
+    lines: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+  }));
+
+export const listMyDropReservations = () => request('GET', sf.drop('reservations'), opts());
+export const getDropReservation = (id) => request('GET', sf.drop(`reservations/${id}`), opts());
+export const checkoutDrop = (reservationId) => request('POST', sf.drop(`reservations/${reservationId}/checkout`), opts());
+export const getDropPurchase = (id) => request('GET', sf.drop(`purchases/${id}`), opts());
+
+/**
+ * Fase do drop pelas datas (a resposta pública não traz dropEventStatusId).
+ * @returns {'upcoming'|'queue'|'live'|'ended'}
+ */
+export const dropPhase = (event, now) => {
+  if (!event) return 'upcoming';
+  if (now >= Date.parse(event.dropEndsAt)) return 'ended';
+  if (now >= Date.parse(event.dropStartsAt)) return 'live';
+  if (event.queueOpensAt && now >= Date.parse(event.queueOpensAt)) return 'queue';
+  return 'upcoming';
+};
 
 // O storefront só lista eventos; agenda completa (inscrição, fila) vem do CRUD.
 export const getDrop = (id) => dropEvents.getById(id);
@@ -151,34 +248,51 @@ export const joinWaitlist = async ({ eventId, dropProductId, customerId, dropEnd
 
 export const leaveWaitlist = (entryId) => waitlist.remove(entryId);
 
+// ------------------------------------------------------------- ENDEREÇOS ---
+
+// Endereços de entrega (task 31). Toda escrita devolve a lista inteira, o padrão
+// primeiro: a tela troca a lista pela resposta, sem reler.
+// Regras do back: até 20; o primeiro vira padrão; excluir o padrão promove o mais
+// recente; editar não muda pedidos já feitos (o pedido copia o endereço).
+const addressBody = (address) => ({
+  label: address.label?.trim() || null,
+  recipientName: address.recipientName?.trim() || null,
+  addressLine: address.addressLine.trim(),
+  city: address.city.trim(),
+  stateId: Number(address.stateId),
+  zipCode: address.zipCode.trim(),
+  country: address.country?.trim() || null,
+  isDefault: Boolean(address.isDefault),
+});
+
+export const MAX_ADDRESSES = 20;
+export const listAddresses = () => request('GET', sf.store('me/addresses'), opts());
+export const addAddress = (address) => request('POST', sf.store('me/addresses'), opts(addressBody(address)));
+export const updateAddress = (id, address) => request('PUT', sf.store(`me/addresses/${id}`), opts(addressBody(address)));
+export const setDefaultAddress = (id) => request('PUT', sf.store(`me/addresses/${id}/default`), opts());
+export const deleteAddress = (id) => request('DELETE', sf.store(`me/addresses/${id}`), opts());
+
 // --------------------------------------------------------------- PEDIDOS ---
 
-// Lista unificada de pedidos (drop + vitrine) com título e miniatura.
-// storefront/orders e storefront/drop/orders trazem status e total; itens,
-// data do pedido de drop e capa vêm do CRUD e da vitrine.
+// Lista unificada de pedidos (drop + vitrine).
+// Vitrine (task 32): GET storefront/orders, PagedResponse<OrderSummaryResponse>, com
+// número comercial, status e se o cliente ainda pode cancelar. Drop: storefront/drop/orders
+// + CRUD para a data (task 18 troca pelo fluxo novo).
+const STORE_ORDERS_PAGE_SIZE = 100;
+
 export const listMyOrders = async () => {
-  const [store, drop, drops, products] = await Promise.all([
-    request('GET', sf.store('orders'), opts()),
+  const [store, drop, drops] = await Promise.all([
+    request('GET', sf.store(`orders?page=1&pageSize=${STORE_ORDERS_PAGE_SIZE}`), opts()).then(toPage),
     request('GET', sf.drop('orders'), opts()),
     listPublicDrops(),
-    listStoreProducts(),
   ]);
-  const [storeItems, dropFull] = await Promise.all([
-    store.length ? orderItems.getAll() : [],
-    dropOrders.getByIds(drop.map((o) => o.id)).catch(() => []),
-  ]);
-  const productImage = (id) => products.find((p) => p.id === id)?.imageUrls?.split(',')[0] ?? '';
+  const dropFull = await dropOrders.getByIds(drop.map((o) => o.id)).catch(() => []);
 
-  const fromStore = store.map((o) => {
-    const items = storeItems.filter((i) => i.orderId === o.id);
-    const first = items[0];
-    return {
-      source: 'store', id: o.id, createdAt: o.createdAt, totalAmount: o.totalAmount,
-      statusId: o.orderStatusId, paymentStatusId: o.orderPaymentStatusId,
-      title: first ? `${first.itemName}${items.length > 1 ? ` + ${items.length - 1} ${items.length === 2 ? 'item' : 'itens'}` : ''}` : 'Pedido da vitrine',
-      imageUrl: first?.productId ? productImage(first.productId) : '',
-    };
-  });
+  const fromStore = store.items.map((o) => ({
+    source: 'store', id: o.id, number: o.number, createdAt: o.createdAt, totalAmount: o.totalAmount,
+    statusId: o.statusId, paymentStatusId: o.paymentStatusId, paymentExpiresAt: o.paymentExpiresAt,
+    canCustomerCancel: o.canCustomerCancel, title: `Pedido nº ${o.number}`, imageUrl: '',
+  }));
   const fromDrop = drop.map((o) => {
     const event = drops.find((d) => d.id === o.dropEventId);
     return {
@@ -190,31 +304,29 @@ export const listMyOrders = async () => {
   return [...fromStore, ...fromDrop].sort((a, b) => Date.parse(b.createdAt ?? 0) - Date.parse(a.createdAt ?? 0));
 };
 
-// Detalhe completo (endereço, subtotal, desconto, frete) só existe no CRUD.
+// Detalhe. Vitrine: GET storefront/orders/{id} (OrderDetailResponse) traz itens, totais,
+// endereço, cobrança, envios e histórico. Nota fiscal ainda não tem rota do cliente.
 export const getOrderDetail = async (source, id) => {
   if (source === 'drop') {
     const [order, summary] = await Promise.all([dropOrders.getById(id), request('GET', sf.drop(`orders/${id}`), opts())]);
     return { order, items: summary.items ?? [], shipment: null, invoice: null };
   }
-  const [order, summary, allShipments, allInvoices] = await Promise.all([
-    storeOrders.getById(id),
-    request('GET', sf.store(`orders/${id}`), opts()),
-    shipments.getAll(),
-    invoices.getAll(),
-  ]);
+  const order = await request('GET', sf.store(`orders/${id}`), opts());
   return {
     order,
-    items: summary.items ?? [],
-    shipment: allShipments.find((s) => s.orderId === id) ?? null,
-    invoice: allInvoices.find((i) => i.orderId === id && i.invoiceStatusId !== 4) ?? null,
+    items: (order.items ?? []).map((i) => ({ ...i, itemName: i.variantName ? `${i.itemName} (${i.variantName})` : i.itemName })),
+    shipment: order.shipments?.at(-1) ?? null,
+    invoice: null,
   };
 };
 
 // Drop: o back não tem rota de cancelamento da compra e o CRUD de drop-orders
 // responde 403 DropPurchase.UseWorkflow; a reserva expira sozinha se não for paga.
-export const cancelOrder = (source, order) => {
+// Vitrine: POST storefront/orders/{id}/cancel; só pedido aguardando pagamento
+// (canCustomerCancel). O back libera o estoque reservado.
+export const cancelOrder = (source, order, reason) => {
   if (source === 'drop') throw new Error('Compras de drop não podem ser canceladas por aqui.');
-  return storeOrders.patch(order, { orderStatusId: 6 });
+  return request('POST', sf.store(`orders/${order.id}/cancel`), opts({ reason: reason?.trim() || null }));
 };
 
 // ---------------------------------------------------------- NOTIFICAÇÕES ---
@@ -235,84 +347,54 @@ export const deleteNotification = (id) => dropNotifications.remove(id);
 
 // ------------------------------------------------------- VITRINE/CHECKOUT ---
 
-export const listStoreProducts = () => request('GET', sf.store('products?page=1&pageSize=100'), { realm: null });
+// ---------------------------------------------------------------- CHECKOUT ---
+// Checkout real (task 32). Rotas conferidas no back (StorefrontOrderController):
+//   POST storefront/{slug}/checkout/shipping-quotes  { addressId? | useProfileAddress | campos } -> cotações
+//   POST storefront/{slug}/checkout                  CheckoutRequest -> OrderDetailResponse
+// O pedido compra os itens MARCADOS do carrinho; o front não manda itens, preço nem
+// desconto. A mesma idempotencyKey devolve o mesmo pedido (clique duplo, F5, timeout).
 
-// Cupom da vitrine: válido, dentro da janela e com uso disponível.
-export const findStoreCoupon = async (code, subTotal) => {
-  const normalized = code.trim().toUpperCase();
-  const coupon = (await coupons.getAll()).find((c) => c.code.toUpperCase() === normalized);
-  const now = Date.now();
-  if (!coupon || !coupon.isActive) return { coupon: null, error: 'Cupom inválido.' };
-  if (now < Date.parse(coupon.startsAt) || now > Date.parse(coupon.expiresAt)) return { coupon: null, error: 'Cupom fora da validade.' };
-  if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) return { coupon: null, error: 'Cupom esgotado.' };
-  if (subTotal < coupon.minOrderValue) return { coupon: null, error: `Cupom válido a partir de R$ ${coupon.minOrderValue.toFixed(2).replace('.', ',')}.` };
-  return { coupon, error: '' };
+// Formas de pagamento do back (TransactionMethod). Saldo Mercado Pago (4) só com a conta conectada.
+export const PAYMENT_METHODS = [
+  { id: 2, label: 'Pix' },
+  { id: 1, label: 'Cartão de crédito' },
+  { id: 3, label: 'Boleto' },
+];
+
+/**
+ * Onde entregar: um endereço salvo, o do cadastro ou um digitado (o back recusa
+ * addressId com useProfileAddress).
+ * @param {{ kind: 'saved'|'profile'|'new', addressId?: number, addressLine?: string, city?: string, stateId?: number, zipCode?: string }} choice
+ */
+const destinationBody = (choice) => {
+  if (choice.kind === 'saved') return { addressId: choice.addressId, useProfileAddress: false };
+  if (choice.kind === 'profile') return { addressId: null, useProfileAddress: true };
+  return {
+    addressId: null,
+    useProfileAddress: false,
+    shippingAddressLine: choice.addressLine?.trim() ?? '',
+    shippingCity: choice.city?.trim() ?? '',
+    shippingStateId: Number(choice.stateId) || null,
+    shippingZipCode: choice.zipCode?.trim() ?? '',
+  };
 };
 
-export const couponDiscount = (coupon, subTotal) => {
-  if (!coupon) return 0;
-  const raw = coupon.couponTypeId === 1 ? (subTotal * coupon.discountValue) / 100 : coupon.discountValue;
-  const capped = coupon.maxDiscountCap > 0 ? Math.min(raw, coupon.maxDiscountCap) : raw;
-  return Math.round(Math.min(capped, subTotal) * 100) / 100;
-};
+export const getShippingQuotes = (choice) =>
+  request('POST', sf.store('checkout/shipping-quotes'), opts(destinationBody(choice)));
 
-// Pedido da vitrine em quatro chamadas, na ordem do design (C10):
-//   orders/add -> order-items/add-range -> transactions/add -> coupons/update
-export const placeStoreOrder = async ({ customer, lines, coupon, shipping, address, methodId }) => {
-  const subTotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
-  const discountAmount = couponDiscount(coupon, subTotal);
-  const totalAmount = Math.round((subTotal - discountAmount + shipping.cost) * 100) / 100;
-
-  const order = await storeOrders.add({
-    enterpriseId: customer.enterpriseId,
-    customerId: customer.id,
-    couponId: coupon?.id ?? null,
-    orderStatusId: 1,
-    orderPaymentStatusId: 1,
-    subTotal,
-    discountAmount,
-    shippingCost: shipping.cost,
-    taxAmount: 0,
-    totalAmount,
-    shippingAddressLine: address.addressLine,
-    shippingCity: address.city,
-    // O comando recebe a UF como texto; a entidade guarda shippingStateId.
-    shippingState: String(address.stateId),
-    shippingStateId: address.stateId,
-    shippingZipCode: address.zipCode,
-    notes: `Frete ${shipping.label}`,
-  });
-
-  await orderItems.addRange(lines.map((l) => ({
-    orderId: order.id,
-    productId: l.productId,
-    serviceId: null,
-    itemName: l.name,
-    sku: l.sku,
-    quantity: l.quantity,
-    unitPrice: l.unitPrice,
-    discountAmount: 0,
-    totalPrice: Math.round(l.unitPrice * l.quantity * 100) / 100,
-  })));
-
-  await transactions.add({
-    orderId: order.id,
-    customerId: customer.id,
-    transactionTypeId: 1,
-    transactionMethodId: methodId,
-    transactionStatusId: 1,
-    amount: totalAmount,
-    fee: 0,
-    gatewayReference: '',
-    gatewayProvider: '',
-    gatewayPayload: '{}',
-    paidAt: null,
-    refundedAt: null,
-  });
-
-  if (coupon) await coupons.patch(coupon, { usedCount: coupon.usedCount + 1 });
-
-  return order;
-};
+/**
+ * @param {{ idempotencyKey: string, paymentMethodId: number, couponCode?: string|null, destination: object,
+ *   pickupAtStore?: boolean, shippingQuoteToken?: string|null, notes?: string }} checkout
+ */
+export const placeOrder = ({ idempotencyKey, paymentMethodId, couponCode, destination, pickupAtStore, shippingQuoteToken, notes }) =>
+  request('POST', sf.store('checkout'), opts({
+    idempotencyKey,
+    paymentMethodId,
+    couponCode: couponCode || null,
+    ...(pickupAtStore ? { addressId: null, useProfileAddress: false } : destinationBody(destination)),
+    shippingQuoteToken: pickupAtStore ? null : shippingQuoteToken ?? null,
+    pickupAtStore: Boolean(pickupAtStore),
+    notes: notes?.trim() || null,
+  }));
 
 export const isCountedOrder = (statusId) => !ORDER_STATUS_EXCLUDED.includes(statusId);

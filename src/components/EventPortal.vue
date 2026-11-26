@@ -1,9 +1,13 @@
 <script setup>
 import { Clock, ArrowRight, Package, RefreshCw } from '@lucide/vue';
 
+// Portal de drops (task 16): GET storefront/{slug}/drop/events. O resumo público traz
+// preço, capa e início/fim do drop; não traz estoque nem o horário da fila (esses
+// ficam no detalhe). A fase é calculada pelas datas e pela hora do servidor (`now`).
 const props = defineProps({
   events: { type: Array, default: () => [] },
-  virtualTime: { type: Date, required: true },
+  // serverNow() em ms (services/clock.js)
+  now: { type: Number, required: true },
   isLoading: { type: Boolean, default: false },
   error: { type: String, default: '' },
 });
@@ -11,51 +15,40 @@ const props = defineProps({
 const emit = defineEmits(['select-event', 'retry']);
 
 const SKELETON_CARDS = 3;
-const CRITICAL_STOCK_PCT = 20;
+const HOUR = 60 * 60 * 1000;
 
 const numberBRL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const integerBR = new Intl.NumberFormat('pt-BR');
+const dayFmt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+const timeFmt = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+const pad = (n) => String(n).padStart(2, '0');
 const formatCountdown = (diffMs) => {
-  if (diffMs <= 0) return '00:00';
-  const totalSecs = Math.floor(diffMs / 1000);
-  const mins = Math.floor(totalSecs / 60);
-  const secs = totalSecs % 60;
-  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const total = Math.max(0, Math.floor(diffMs / 1000));
+  const hours = Math.floor(total / 3600);
+  const clock = `${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+  return hours > 0 ? `${pad(hours)}:${clock}` : clock;
 };
+const formatWhen = (ms) => `${dayFmt.format(ms)} às ${timeFmt.format(ms)}`;
 
-const shortDescription = (text) => (text.length > 105 ? `${text.slice(0, 105).trimEnd()}…` : text);
-
-const formatClock = (date) => date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-const hasPurchased = (event) => localStorage.getItem(`veloce_order_success_${event.id}`) !== null;
-const available = (event) => Math.max(0, event.totalUnitsAvailable - event.unitsSold);
-const isSoldOut = (event) => available(event) === 0;
-const isCriticalStock = (event) => (available(event) / Math.max(1, event.totalUnitsAvailable)) * 100 <= CRITICAL_STOCK_PCT;
+const shortDescription = (text) => (text?.length > 105 ? `${text.slice(0, 105).trimEnd()}…` : text ?? '');
 
 // Badge e linha de tempo do card, conforme o mapa de estados de components/badge.md.
 const statusFor = (event) => {
-  const now = new Date(props.virtualTime);
-  const queueOpens = new Date(event.queueOpensAt);
-  const dropStarts = new Date(event.dropStartsAt);
-  const dropEnds = new Date(event.dropEndsAt);
-
-  if (hasPurchased(event)) {
-    return { variant: 'ds-badge--success', label: 'Pedido confirmado', time: 'Sua unidade está garantida.', cta: 'Ver pedido' };
+  const starts = Date.parse(event.dropStartsAt);
+  const ends = Date.parse(event.dropEndsAt);
+  if (props.now >= ends) {
+    return { variant: 'ds-badge--done', label: 'Encerrado', time: `Encerrado em ${formatWhen(ends)}.`, cta: 'Ver drop' };
   }
-  if (now >= dropEnds) {
-    return { variant: 'ds-badge--done', label: 'Encerrado', time: 'Evento concluído.', cta: 'Ver resultados' };
+  if (props.now >= starts) {
+    return { variant: 'ds-badge--live', live: true, label: 'AO VIVO', time: `Vendas abertas até ${timeFmt.format(ends)}.`, cta: 'Ver drop' };
   }
-  if (isSoldOut(event)) {
-    return { variant: 'ds-badge--done', label: 'Esgotado', time: 'Todas as unidades foram vendidas.', cta: 'Ver drop' };
-  }
-  if (now < queueOpens) {
-    return { variant: 'ds-badge--scheduled', label: `Abre em ${formatClock(queueOpens)}`, time: `Fila abre em ${formatCountdown(queueOpens - now)}`, cta: 'Ver drop' };
-  }
-  if (now < dropStarts) {
-    return { variant: 'ds-badge--live', live: true, label: 'AO VIVO', time: `Fila aberta · drop inicia em ${formatCountdown(dropStarts - now)}`, cta: 'Ver drop' };
-  }
-  return { variant: 'ds-badge--live', live: true, label: 'AO VIVO', time: 'Vendas liberadas por ordem da fila.', cta: 'Ver drop' };
+  const soon = starts - props.now < HOUR;
+  return {
+    variant: 'ds-badge--scheduled',
+    label: soon ? `Começa às ${timeFmt.format(starts)}` : `Começa ${dayFmt.format(starts)}`,
+    time: soon ? `Drop inicia em ${formatCountdown(starts - props.now)}` : `Drop em ${formatWhen(starts)}.`,
+    cta: 'Ver drop',
+  };
 };
 </script>
 
@@ -190,15 +183,15 @@ const statusFor = (event) => {
                   <span class="ds-stat__unit">R$</span>{{ numberBRL.format(event.price) }}
                 </div>
                 <div class="ds-stat__label">
-                  Preço
+                  {{ event.requiresRegistration ? 'Preço · exige inscrição' : 'Preço' }}
                 </div>
               </div>
-              <div :class="['ds-stat', { 'ds-stat--critical': isCriticalStock(event) }]">
+              <div class="ds-stat">
                 <div class="ds-stat__value">
-                  {{ integerBR.format(available(event)) }}<span class="ds-stat__unit">un.</span>
+                  {{ timeFmt.format(Date.parse(event.dropStartsAt)) }}
                 </div>
                 <div class="ds-stat__label">
-                  de {{ integerBR.format(event.totalUnitsAvailable) }} disponíveis
+                  Início · {{ dayFmt.format(Date.parse(event.dropStartsAt)) }}
                 </div>
               </div>
             </div>

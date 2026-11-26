@@ -132,7 +132,7 @@ export function createSeed(now = Date.now()) {
     id, enterpriseId: ENTERPRISE_ID, categoryId, supplierId, name, slug: slugify(name), description,
     sku, barCode: `789${digits(10)}`, price, costPrice: round2(price * 0.45),
     weight: 0.8, height: 12, width: 30, length: 20, brand: 'Veloce', imageUrls: imageUrl,
-    isActive: true, isDigital: false, isDeleted: false, deletedAt: null,
+    isActive: true, isDigital: false, isDeleted: false, deletedAt: null, isTransferredToDrop: false,
     stockQuantity, stockReserved: 0, // task 19 (ainda não existe no back-end)
     ...base(now - 250 * DAY),
   });
@@ -145,7 +145,17 @@ export function createSeed(now = Date.now()) {
     product(106, 3, 3, 'Boné Destroyed Star', 'VLC-BON-106', 89.90, 25, '/vitrine_bone.jpg', 'Sarja estonada com estrelas aplicadas.'),
     product(107, 3, 3, 'Mochila Classic', 'VLC-MOC-107', 229.90, 9, '/vitrine_mochila.jpg', 'Poliéster resistente e bolso frontal com zíper.'),
     product(108, 4, null, 'Mousepad XL Art', 'VLC-MPD-108', 129.90, 33, '/vitrine_mousepad.jpg', 'Tecido de deslize suave e base antiderrapante.'),
-    product(109, 4, null, 'Teclado CyberBoard 75%', 'VLC-TEC-109', 599.90, 0, '/drop_keyboard.jpg', 'Base do drop CyberBoard. Vendido só em drop.'),
+    // Produtos transferidos para o Drop (FluxoComercial.md, "Transferência de estoque"):
+    // arquivados na vitrine, com o saldo no catálogo do DROP. Um produto nunca está
+    // à venda nos dois módulos ao mesmo tempo.
+    ...[
+      [109, 4, 'Teclado CyberBoard 75%', 'VLC-TEC-109', 599.90, '/drop_keyboard.jpg', 'Teclado 75% hot-swappable em alumínio anodizado, com switches lineares.'],
+      [110, 1, 'Tênis Cyber Edition S-X1', 'VLC-TEN-110', 1299, '/drop_sneaker.jpg', 'Cano alto em camurça com estrela aplicada e solado vulcanizado.'],
+      [111, 2, 'Moletom Hype Hoodie V2', 'VLC-MOL-111', 499, '/drop_hoodie.jpg', 'Moletom oversized com capuz duplo e estampa termocrômica.'],
+      [112, 1, 'Tênis Court Drop 00', 'VLC-TEN-112', 399, '/vitrine_cano_baixo.jpg', 'Cano baixo em couro com sola de borracha em contraste.'],
+    ].map(([id, categoryId, name, sku, price, imageUrl, description]) => ({
+      ...product(id, categoryId, null, name, sku, price, 0, imageUrl, description), isActive: false, isTransferredToDrop: true,
+    })),
   ];
 
   db['store/services'] = [
@@ -180,11 +190,11 @@ export function createSeed(now = Date.now()) {
 
   const day4 = now + 4 * DAY;
   db['drop/drop-events'] = [
-    dropEvent(1, 101, 'Veloce Cyber Edition S-X1', '/drop_sneaker.jpg', 1299, 2, true, {
+    dropEvent(1, 110, 'Veloce Cyber Edition S-X1', '/drop_sneaker.jpg', 1299, 2, true, {
       registrationStartsAt: now - 2 * DAY, registrationEndsAt: now + 3 * DAY,
       queueOpensAt: day4 - 15 * MINUTE, dropStartsAt: day4, dropEndsAt: day4 + 2 * HOUR,
     }, 'Edição limitada de 300 pares em quatro numerações.'),
-    dropEvent(2, 103, 'Veloce Hype Hoodie V2', '/drop_hoodie.jpg', 499, 6, false, {
+    dropEvent(2, 111, 'Veloce Hype Hoodie V2', '/drop_hoodie.jpg', 499, 6, false, {
       registrationStartsAt: now - 6 * DAY, registrationEndsAt: now - 2 * HOUR,
       queueOpensAt: now - 75 * MINUTE, dropStartsAt: now - 60 * MINUTE, dropEndsAt: now + 60 * MINUTE,
     }, 'Moletom oversized com estamparia termocrômica. Todas as unidades vendidas ou em checkout.'),
@@ -192,7 +202,7 @@ export function createSeed(now = Date.now()) {
       registrationStartsAt: now - 5 * DAY, registrationEndsAt: now - DAY,
       queueOpensAt: now - 50 * MINUTE, dropStartsAt: now - 35 * MINUTE, dropEndsAt: now + 85 * MINUTE,
     }, 'Teclado mecânico hot-swappable em alumínio anodizado.'),
-    dropEvent(4, 102, 'Veloce Court Drop 00', '/vitrine_cano_baixo.jpg', 399, 7, false, {
+    dropEvent(4, 112, 'Veloce Court Drop 00', '/vitrine_cano_baixo.jpg', 399, 7, false, {
       registrationStartsAt: now - 20 * DAY, registrationEndsAt: now - 15 * DAY,
       queueOpensAt: now - 14 * DAY - 15 * MINUTE, dropStartsAt: now - 14 * DAY, dropEndsAt: now - 14 * DAY + 2 * HOUR,
     }, 'Primeiro drop da coleção Court.'),
@@ -204,11 +214,11 @@ export function createSeed(now = Date.now()) {
     maxPerCustomer: 1, price, isActive: true, isDeleted: false, deletedAt: null, ...base(now - 10 * DAY),
   });
   db['drop/drop-products'] = [
-    dropProduct(1, 101, 'VCX-39', 60, 1299), dropProduct(1, 101, 'VCX-40', 80, 1299),
-    dropProduct(1, 101, 'VCX-41', 90, 1299), dropProduct(1, 101, 'VCX-42', 70, 1299),
-    dropProduct(2, 103, 'HHV2-M', 20, 499), dropProduct(2, 103, 'HHV2-G', 25, 499), dropProduct(2, 103, 'HHV2-GG', 14, 499),
+    dropProduct(1, 110, 'VCX-39', 60, 1299), dropProduct(1, 110, 'VCX-40', 80, 1299),
+    dropProduct(1, 110, 'VCX-41', 90, 1299), dropProduct(1, 110, 'VCX-42', 70, 1299),
+    dropProduct(2, 111, 'HHV2-M', 20, 499), dropProduct(2, 111, 'HHV2-G', 25, 499), dropProduct(2, 111, 'HHV2-GG', 14, 499),
     dropProduct(3, 109, 'CBK-75', 150, 449.90),
-    dropProduct(4, 102, 'VCD-UN', 40, 399),
+    dropProduct(4, 112, 'VCD-UN', 40, 399),
   ];
 
   const dropCoupon = (eventId, code, typeId, discountValue, maxDiscountCap, maxUses, usedCount, exclusive) => {
@@ -441,7 +451,7 @@ export function createSeed(now = Date.now()) {
   db['store/transactions'] = [];
   db['store/shipments'] = [];
   db['store/invoices'] = [];
-  const sellable = db['store/products'].filter((p) => p.id !== 109);
+  const sellable = db['store/products'].filter((p) => !p.isTransferredToDrop);
 
   for (let i = 0; i < 150; i += 1) {
     const ageDays = i === 0 ? 0.1 : random() ** 1.4 * 30;

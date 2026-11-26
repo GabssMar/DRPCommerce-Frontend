@@ -1,96 +1,75 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Settings, RefreshCw, Terminal, ChevronDown, ChevronUp } from '@lucide/vue';
-import { api, subscribeToApiLogs, subscribeToSimState, getVirtualTime } from '../services/api';
+import { mockTimeOffset, serverNow, setMockTimeOffset } from '../services/clock';
+import { mockDropControl } from '../services/mock/server';
+import { requestLog } from '../services/request-log';
+import { getDropEvent } from '../services/client-api';
+import { useServerNow } from '../composables/useNow';
 
+// Ferramenta de desenvolvimento (só no servidor do Vite, modo mock). Mexe no relógio do
+// mock (services/clock.js) e, pelos atalhos de mock/server.js, na fila e no pagamento do
+// cliente logado e no estoque do drop. A aba Rede mostra as requisições que a camada de
+// dados faria ao Gateway (services/request-log.js).
 const props = defineProps({
   activeEventId: { type: Number, default: 1 },
   currentPage: { type: String, default: 'portal' },
+  // Drop aberto no detalhe: os atalhos de fase usam as datas dele.
+  eventDates: { type: Object, default: null },
 });
 
+const EVENT_IDS = [1, 2, 3, 4];
+
 const isOpen = ref(false);
-const logs = ref([]);
-const simState = ref(api.getSettings());
 const activeTab = ref('controls');
 const expandedLogId = ref(null);
 const targetEventId = ref(props.activeEventId);
+const queuePosition = ref(20);
+const now = useServerNow();
 
 watch(() => [props.activeEventId, props.currentPage], () => {
   targetEventId.value = props.activeEventId;
 });
 
-let unsubscribeLogs = null;
-let unsubscribeSim = null;
-
-onMounted(() => {
-  unsubscribeLogs = subscribeToApiLogs((newLogs) => {
-    logs.value = newLogs;
-  });
-
-  unsubscribeSim = subscribeToSimState((newSim) => {
-    simState.value = newSim;
-  });
-});
-
-onUnmounted(() => {
-  unsubscribeLogs?.();
-  unsubscribeSim?.();
-});
-
-const currentEventSim = computed(() => simState.value.events[targetEventId.value] || {});
+const logs = computed(() => requestLog.value);
 
 const shiftTime = (minutes) => {
-  const msOffset = minutes * 60 * 1000;
-  const currentOffset = simState.value.simulatedTimeOffset;
-  api.updateSettings({ simulatedTimeOffset: currentOffset + msOffset });
+  setMockTimeOffset(mockTimeOffset.value + minutes * 60 * 1000);
 };
 
-const jumpToPhase = (phase) => {
-  const now = Date.now();
-  const queueTime = new Date(currentEventSim.value.dates.queueOpensAt).getTime();
-  const startTime = new Date(currentEventSim.value.dates.dropStartsAt).getTime();
-  const endTime = new Date(currentEventSim.value.dates.dropEndsAt).getTime();
-
+const jumpToPhase = async (phase) => {
+  const dates = props.eventDates?.id === targetEventId.value
+    ? props.eventDates
+    : await getDropEvent(targetEventId.value).catch(() => null);
+  if (!dates) return;
+  const queueTime = Date.parse(dates.queueOpensAt ?? dates.dropStartsAt);
   const targetTimes = {
     pre_queue: queueTime - 30 * 1000,
     in_waiting: queueTime + 10 * 1000,
-    drop_start: startTime + 10 * 1000,
-    drop_end: endTime + 10 * 1000,
+    drop_start: Date.parse(dates.dropStartsAt) + 10 * 1000,
+    drop_end: Date.parse(dates.dropEndsAt) + 10 * 1000,
   };
-
-  const targetOffset = phase in targetTimes ? targetTimes[phase] - now : 0;
-  api.updateSettings({ simulatedTimeOffset: targetOffset });
+  // Novo deslocamento = alvo − hora real (serverNow já inclui o deslocamento atual).
+  setMockTimeOffset(targetTimes[phase] - (serverNow() - mockTimeOffset.value));
 };
 
-const changePosition = (pos) => {
-  api.updateEventSettings(targetEventId.value, { currentPosition: pos });
-};
+// Fila e pagamento: agem no cliente logado; a tela vê a mudança na próxima leitura.
+const changePosition = () => mockDropControl.setPosition(targetEventId.value, Number(queuePosition.value) || 1);
+const forceRelease = () => mockDropControl.admit(targetEventId.value);
+const forceExpire = () => mockDropControl.expire(targetEventId.value);
+const approvePayment = () => mockDropControl.approvePayment(targetEventId.value);
+const failPayment = () => mockDropControl.failPayment(targetEventId.value);
+const setStock = (mode) => mockDropControl.setStock(targetEventId.value, mode);
 
-const forceRelease = () => {
-  api.updateEventSettings(targetEventId.value, { queueStatusId: 2, currentPosition: 0 });
-};
-
-const forceExpire = () => {
-  api.updateEventSettings(targetEventId.value, { queueStatusId: 3 });
-};
-
-const changeSoldStock = (sold) => {
-  api.updateEventSettings(targetEventId.value, { unitsSold: sold });
-};
-
+// Os dados do mock vivem na memória da aba: recarregar volta ao seed.
 const handleReset = () => {
-  if (window.confirm('Reiniciar simulação de banco de dados local? Todos os estados de fila e compras serão limpos.')) {
-    api.resetSimulation();
+  if (window.confirm('Reiniciar a simulação? O relógio volta ao normal e os dados do mock voltam ao início.')) {
+    setMockTimeOffset(0);
     window.location.reload();
   }
 };
 
-const virtualClockString = () => {
-  const vt = getVirtualTime();
-  return vt.toLocaleTimeString('pt-BR') + ' ' + vt.toLocaleDateString('pt-BR');
-};
-
-const soldPercent = computed(() => Math.round(((currentEventSim.value.unitsSold || 0) / (currentEventSim.value.unitsAllocated || 1)) * 100));
+const virtualClock = computed(() => new Date(now.value).toLocaleString('pt-BR'));
 
 // Cores do log por significado: método neutro, status verde (2xx) ou vermelho.
 const statusClass = (log) => (log.status >= 200 && log.status < 300 ? 'ds-text-success' : 'ds-text-danger');
@@ -151,13 +130,13 @@ const shiftLabel = (minutes) => `${minutes > 0 ? '+' : ''}${minutes} min`;
 
       <div class="ds-dock__bar ds-text-sm">
         <span class="ds-text-secondary">Hora virtual</span>
-        <strong class="ds-numeric ds-text-medium">{{ virtualClockString() }}</strong>
+        <strong class="ds-numeric ds-text-medium">{{ virtualClock }}</strong>
       </div>
 
       <div class="ds-dock__bar ds-text-sm">
         <template v-if="currentPage === 'detail'">
           <span class="ds-text-secondary">Evento</span>
-          <strong class="ds-text-medium">{{ currentEventSim.name }} (ID {{ targetEventId }})</strong>
+          <strong class="ds-text-medium">{{ eventDates?.name ?? 'Drop' }} (ID {{ targetEventId }})</strong>
         </template>
         <template v-else>
           <label
@@ -169,14 +148,12 @@ const shiftLabel = (minutes) => `${minutes > 0 ? '+' : ''}${minutes} min`;
             v-model.number="targetEventId"
             class="ds-input ds-dock__select"
           >
-            <option :value="1">
-              Sneaker (ID 1)
-            </option>
-            <option :value="2">
-              Hoodie (ID 2)
-            </option>
-            <option :value="3">
-              Keyboard (ID 3)
+            <option
+              v-for="id in EVENT_IDS"
+              :key="id"
+              :value="id"
+            >
+              Drop {{ id }}
             </option>
           </select>
         </template>
@@ -260,21 +237,25 @@ const shiftLabel = (minutes) => `${minutes > 0 ? '+' : ''}${minutes} min`;
             </h3>
             <div class="ds-field">
               <label
-                class="ds-label ds-cluster ds-cluster--between"
+                class="ds-label"
                 for="sim-position"
-              >
-                <span>Posição na fila</span>
-                <strong class="ds-numeric">#{{ currentEventSim.currentPosition }}</strong>
-              </label>
-              <input
-                id="sim-position"
-                type="range"
-                min="0"
-                max="200"
-                class="ds-dock__range"
-                :value="currentEventSim.currentPosition || 0"
-                @input="(e) => changePosition(parseInt(e.target.value))"
-              >
+              >Mover para a posição</label>
+              <div class="ds-input-group">
+                <input
+                  id="sim-position"
+                  v-model.number="queuePosition"
+                  type="number"
+                  min="1"
+                  class="ds-input"
+                >
+                <button
+                  type="button"
+                  class="ds-btn ds-btn--secondary ds-btn--sm"
+                  @click="changePosition"
+                >
+                  Mover
+                </button>
+              </div>
             </div>
             <div class="ds-dock__actions">
               <button
@@ -298,47 +279,52 @@ const shiftLabel = (minutes) => `${minutes > 0 ? '+' : ''}${minutes} min`;
             <h3 class="ds-label-caps">
               3. Estoque do drop
             </h3>
-            <div class="ds-field">
-              <label
-                class="ds-label ds-cluster ds-cluster--between"
-                for="sim-sold"
-              >
-                <span>Unidades vendidas</span>
-                <strong class="ds-numeric">
-                  {{ currentEventSim.unitsSold }} / {{ currentEventSim.unitsAllocated }} ({{ soldPercent }}%)
-                </strong>
-              </label>
-              <input
-                id="sim-sold"
-                type="range"
-                min="0"
-                class="ds-dock__range"
-                :max="currentEventSim.unitsAllocated || 100"
-                :value="currentEventSim.unitsSold || 0"
-                @input="(e) => changeSoldStock(parseInt(e.target.value))"
-              >
-            </div>
             <div class="ds-dock__actions ds-dock__actions--fill">
               <button
                 type="button"
                 class="ds-btn ds-btn--ghost ds-btn--sm"
-                @click="changeSoldStock(0)"
+                @click="setStock('clear')"
               >
                 Limpar vendas
               </button>
               <button
                 type="button"
                 class="ds-btn ds-btn--ghost ds-btn--sm"
-                @click="changeSoldStock((currentEventSim.unitsAllocated || 10) - 5)"
+                @click="setStock('last')"
               >
                 Últimas 5
               </button>
               <button
                 type="button"
                 class="ds-btn ds-btn--ghost-danger ds-btn--sm"
-                @click="changeSoldStock(currentEventSim.unitsAllocated || 10)"
+                @click="setStock('soldout')"
               >
                 Esgotar
+              </button>
+            </div>
+          </section>
+
+          <section class="ds-stack--3">
+            <h3 class="ds-label-caps">
+              4. Pagamento do drop
+            </h3>
+            <p class="ds-hint">
+              No mock não há Mercado Pago: aprove ou recuse o último pedido pendente deste drop, como o webhook faria.
+            </p>
+            <div class="ds-dock__actions">
+              <button
+                type="button"
+                class="ds-btn ds-btn--secondary ds-btn--sm"
+                @click="approvePayment"
+              >
+                Aprovar pagamento
+              </button>
+              <button
+                type="button"
+                class="ds-btn ds-btn--ghost-danger ds-btn--sm"
+                @click="failPayment"
+              >
+                Recusar pagamento
               </button>
             </div>
           </section>
@@ -352,7 +338,7 @@ const shiftLabel = (minutes) => `${minutes > 0 ? '+' : ''}${minutes} min`;
             v-if="logs.length === 0"
             class="ds-empty ds-text-sm"
           >
-            Nenhuma requisição interceptada ainda.
+            Nenhuma requisição ainda.
           </p>
           <div
             v-for="log in logs"
@@ -390,10 +376,8 @@ const shiftLabel = (minutes) => `${minutes > 0 ? '+' : ''}${minutes} min`;
               v-if="expandedLogId === log.id"
               class="ds-stack--2"
             >
-              <span class="ds-label-caps">Requisição</span>
-              <pre class="ds-code">{{ log.request }}</pre>
-              <span class="ds-label-caps">Resposta</span>
-              <pre class="ds-code">{{ log.response }}</pre>
+              <span class="ds-label-caps">Corpo enviado · {{ log.at.toLocaleTimeString('pt-BR') }}</span>
+              <pre class="ds-code">{{ log.body || '(sem corpo)' }}</pre>
             </div>
           </div>
         </div>
