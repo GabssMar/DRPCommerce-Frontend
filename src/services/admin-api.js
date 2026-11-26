@@ -228,7 +228,7 @@ export const writeAudit = async ({ eventId, customerId = null, action, entityNam
   });
 };
 
-// --------------------------------------------------------- EQUIPE/EMPRESA ---
+// ---------------------------------------------------------------- EMPRESA ---
 
 // Lojas da conta: [{ membershipId, enterpriseId, tradeName, kindId }]. Aceita o
 // token global (antes de escolher a loja).
@@ -240,11 +240,6 @@ export const updateEnterprise = (payload) => request('PUT', store('enterprises/c
 // Dados públicos da loja (nome, e-mail, telefone): o back não tem GET completo da empresa.
 // Rota do storefront: a loja vem do slug do endereço (STORE_SLUG), não do token.
 export const getPublicStore = () => request('GET', storefrontPath(STORE_BASE, 'store'), { realm: null });
-
-export const listInvitations = () => request('GET', store('invitations'), opts());
-export const inviteMember = ({ email, kindId, accessRoleIds }) => request('POST', store('invitations'), opts({ email, kindId, accessRoleIds }));
-export const revokeInvitation = (id) => request('DELETE', store(`invitations/${id}`), opts());
-export const listAccessRoles = () => request('GET', store('access-roles/get-all'), opts());
 
 // ------------------------------------------------------------ INTEGRAÇÕES ---
 // Task 43. Rotas do Store (MercadoPagoController, MelhorEnvioController,

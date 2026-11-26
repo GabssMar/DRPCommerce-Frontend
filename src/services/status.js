@@ -192,6 +192,21 @@ export const MEMBERSHIP_KIND = table([
   [3, 'Funcionário'],
 ]);
 
+// Módulo da permissão (o back devolve o nome em inglês), na ordem do editor de perfis.
+export const PERMISSION_MODULES = {
+  Products: 'Produtos',
+  Categories: 'Categorias',
+  Coupons: 'Cupons',
+  Inventory: 'Estoque',
+  Suppliers: 'Fornecedores',
+  Orders: 'Pedidos',
+  Customers: 'Clientes',
+  Employees: 'Funcionários',
+  Drop: 'Drops',
+  Settings: 'Configurações',
+  StoreHistory: 'Histórico da loja',
+};
+
 // UF: o id é o da tabela State do back-end (ordem alfabética pelo nome).
 export const STATES = [
   [1, 'AC', 'Acre'], [2, 'AL', 'Alagoas'], [3, 'AP', 'Amapá'], [4, 'AM', 'Amazonas'],

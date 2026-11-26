@@ -35,14 +35,31 @@ export function useAsync(loader, { immediate = true, initial = null } = {}) {
     }
   };
 
+  // Volta ao estado inicial (esqueleto na próxima carga): troca de registro sem mostrar o anterior.
+  const clear = () => {
+    version += 1;
+    data.value = initial;
+    error.value = null;
+  };
+
   onScopeDispose(() => {
     disposed = true;
   });
 
   if (immediate) run();
 
-  return { data, error, isLoading, isRefreshing, reload: run };
+  return { data, error, isLoading, isRefreshing, reload: run, clear };
 }
+
+// Ações da mesma área mostram um aviso só: iniciar uma limpa o erro das outras,
+// e o que aparece é sempre o da última.
+export const exclusive = (...actions) => actions.forEach((action) => {
+  const run = action.run;
+  action.run = (...args) => {
+    actions.forEach((other) => { if (other !== action) other.error.value = null; });
+    return run(...args);
+  };
+});
 
 // Ação do usuário (salvar, aprovar…): estado de envio + mensagem de erro/sucesso.
 export function useAction(action) {

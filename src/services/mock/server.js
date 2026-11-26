@@ -441,6 +441,130 @@ function dropStorefront(method, path, who, body) {
 
 // ------------------------------------------------------- BACKOFFICE (equipe) ---
 
+// ------------------------------------------------- EQUIPE E ACESSOS (task 40) ---
+
+const minutesFromNow = (m) => new Date(Date.now() + m * 60e3).toISOString();
+
+function teamRoutes(method, path, body) {
+  const d = data();
+  const roles = d['store/access-roles'];
+  const memberRows = d['store/enterprise-memberships'];
+  const invitations = d['store/invitations'];
+
+  if (path === 'permissions/get-all') return ok(d['store/permissions']);
+  if (path === 'access-roles/get-all') return raw(roles);
+  if (path === 'access-role-permissions/get-all') return raw(d['store/access-role-permissions']);
+  if (path === 'membership-access-roles/get-all') return raw(d['store/membership-access-roles']);
+  if (path === 'enterprise-memberships/get-all') return raw(memberRows);
+
+  const setRolePermissions = (accessRoleId, ids = []) => {
+    d['store/access-role-permissions'] = d['store/access-role-permissions']
+      .filter((r) => r.accessRoleId !== accessRoleId)
+      .concat(ids.map((permissionId) => ({ enterpriseId: 1, accessRoleId, permissionId })));
+  };
+  if (path === 'access-roles/add' && method === 'POST') {
+    if (!body?.name?.trim()) return problem(400, 'Validation.InvalidInput', 'Os dados informados são inválidos.');
+    const role = { id: nextIdOf(roles), enterpriseId: 1, name: body.name, normalizedName: body.name.toUpperCase(), description: body.description ?? '', isActive: body.isActive };
+    roles.push(role);
+    setRolePermissions(role.id, body.permissionIds);
+    return raw(role);
+  }
+  const roleMatch = path.match(/^access-roles\/(\d+)$/);
+  if (roleMatch) {
+    const role = roles.find((r) => r.id === Number(roleMatch[1]));
+    if (!role) return problem(404, 'Access.RoleNotFound', 'Perfil não encontrado.');
+    if (method === 'PUT') {
+      Object.assign(role, { name: body.name, normalizedName: body.name.toUpperCase(), description: body.description ?? '', isActive: body.isActive });
+      setRolePermissions(role.id, body.permissionIds);
+      return raw(role);
+    }
+    if (method === 'DELETE') {
+      const inUse = d['store/membership-access-roles'].some((r) => r.accessRoleId === role.id);
+      if (inUse) return problem(409, 'Access.RoleInUse', 'O perfil está em uso. Desative-o em vez de excluir.');
+      d['store/access-roles'] = roles.filter((r) => r !== role);
+      setRolePermissions(role.id);
+      return noContent();
+    }
+  }
+
+  const memberMatch = path.match(/^enterprise-memberships\/(\d+)(\/access-roles)?$/);
+  if (memberMatch && method === 'PUT') {
+    const member = memberRows.find((m) => m.id === Number(memberMatch[1]));
+    if (!member) return problem(404, 'Access.MembershipNotFound', 'Membro não encontrado.');
+    if (member.kindId === 1) return problem(409, 'Access.PrimaryOwnerProtected', 'O dono principal não pode ser alterado.');
+    if (memberMatch[2]) {
+      d['store/membership-access-roles'] = d['store/membership-access-roles']
+        .filter((r) => r.enterpriseMembershipId !== member.id)
+        .concat((body?.accessRoleIds ?? []).map((accessRoleId) => ({ enterpriseId: 1, enterpriseMembershipId: member.id, accessRoleId })));
+      return noContent();
+    }
+    if (![2, 3].includes(Number(body?.kindId))) return problem(400, 'Access.UseOwnershipTransfer', 'Use a transferência de propriedade.');
+    Object.assign(member, { kindId: Number(body.kindId), isActive: Boolean(body.isActive) });
+    return raw(member);
+  }
+
+  const deactivateMatch = path.match(/^employees\/(\d+)\/deactivate$/);
+  if (deactivateMatch && method === 'PUT') {
+    const employee = d['store/employees'].find((e) => e.id === Number(deactivateMatch[1]));
+    if (!employee) return problem(404, 'Employee.NotFound', 'Funcionário não encontrado.');
+    employee.isActive = false;
+    const member = memberRows.find((m) => m.id === employee.enterpriseMembershipId);
+    if (member) member.isActive = false;
+    return noContent();
+  }
+
+  if (path === 'invitations' && method === 'GET') return raw(invitations);
+  if (path === 'invitations' && method === 'POST') {
+    const email = String(body?.email ?? '').trim().toUpperCase();
+    invitations.filter((i) => i.email === email && !i.acceptedAt && !i.revokedAt).forEach((i) => { i.revokedAt = nowIso(); });
+    const invitation = { id: nextIdOf(invitations), email, kindId: body.kindId, expiresAt: hoursFromNow(48), acceptedAt: null, revokedAt: null };
+    invitations.push(invitation);
+    return raw({ id: invitation.id, token: `mock-convite-${invitation.id}`, expiresAt: invitation.expiresAt });
+  }
+  const invitationMatch = path.match(/^invitations\/(\d+)$/);
+  if (invitationMatch && method === 'DELETE') {
+    const inv = invitations.find((i) => i.id === Number(invitationMatch[1]));
+    if (inv) inv.revokedAt = nowIso();
+    return noContent();
+  }
+  if (path === 'identity/invitations/accept' && method === 'POST') {
+    const inv = invitations.find((i) => `mock-convite-${i.id}` === body?.token && !i.acceptedAt && !i.revokedAt);
+    if (!inv) return problem(400, 'Access.InvalidLink', 'Link inválido ou expirado.');
+    inv.acceptedAt = nowIso();
+    const member = { id: nextIdOf(memberRows), enterpriseId: 1, userId: nextIdOf(memberRows), kindId: inv.kindId, isActive: true, joinedAt: nowIso() };
+    memberRows.push(member);
+    return raw(member);
+  }
+
+  d.mockTransfers ??= [];
+  if (path === 'ownership-transfers' && method === 'POST') {
+    if (!body?.currentPassword) return problem(401, 'Identity.InvalidCredentials', 'Senha atual incorreta.');
+    const recipient = memberRows.find((m) => m.id === Number(body.recipientMembershipId) && m.isActive && m.kindId !== 1);
+    if (!recipient) return problem(404, 'Access.MembershipNotFound', 'Membro não encontrado.');
+    const transfer = { id: d.mockTransfers.length + 1, recipientId: recipient.id, expiresAt: minutesFromNow(30), open: true };
+    d.mockTransfers.forEach((t) => { t.open = false; });
+    d.mockTransfers.push(transfer);
+    return raw({ id: transfer.id, token: `mock-transferencia-${transfer.id}`, expiresAt: transfer.expiresAt });
+  }
+  const transferMatch = path.match(/^ownership-transfers\/(\d+)$/);
+  if (transferMatch && method === 'DELETE') {
+    const transfer = d.mockTransfers.find((t) => t.id === Number(transferMatch[1]));
+    if (transfer) transfer.open = false;
+    return noContent();
+  }
+  if (path === 'identity/ownership-transfers/accept' && method === 'POST') {
+    const transfer = d.mockTransfers.find((t) => `mock-transferencia-${t.id}` === body?.token && t.open);
+    if (!transfer || !body?.currentPassword) return problem(400, 'Access.InvalidLink', 'Link inválido ou expirado.');
+    transfer.open = false;
+    memberRows.forEach((m) => {
+      if (m.kindId === 1) m.kindId = 2;
+      if (m.id === transfer.recipientId) m.kindId = 1;
+    });
+    return noContent();
+  }
+  return null;
+}
+
 function storeBackoffice(method, path, body, who) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
@@ -531,23 +655,8 @@ function storeBackoffice(method, path, body, who) {
     Object.assign(d.enterprise, body);
     return raw({ id: d.enterprise.id, tradeName: d.enterprise.tradeName, isActive: d.enterprise.isActive });
   }
-  if (path === 'invitations' && method === 'GET') return raw(d['store/invitations']);
-  if (path === 'invitations' && method === 'POST') {
-    const invitation = {
-      id: nextIdOf(d['store/invitations']), email: body.email, kindId: body.kindId,
-      expiresAt: new Date(Date.now() + 7 * 864e5).toISOString(), acceptedAt: null, revokedAt: null,
-    };
-    d['store/invitations'].push(invitation);
-    return raw({ id: invitation.id, token: 'mock-invite-token', expiresAt: invitation.expiresAt });
-  }
-  const invitationMatch = path.match(/^invitations\/(\d+)$/);
-  if (invitationMatch && method === 'DELETE') {
-    const inv = d['store/invitations'].find((i) => i.id === Number(invitationMatch[1]));
-    if (inv) inv.revokedAt = nowIso();
-    return noContent();
-  }
-  if (path === 'access-roles/get-all') return ok(d['store/access-roles']);
-  if (path === 'enterprise-memberships/get-all') return ok(d['store/enterprise-memberships']);
+  const team = teamRoutes(method, path, body);
+  if (team) return team;
 
   // Task 19 (ainda não existe no back-end): movimentação de estoque.
   if (path === 'products/adjust-stock' && method === 'POST') {

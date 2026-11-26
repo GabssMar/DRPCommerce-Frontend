@@ -7,10 +7,12 @@ import { focusMain, href, navigate, route } from '../../router';
 import { IS_MOCK } from '../../services/config';
 import { getAccessToken, hasSelectedEnterprise, isSignedIn, REALMS, tokenClaims } from '../../services/session';
 import { logoutEmployee, restoreSession } from '../../services/auth';
+import { usePermissions } from '../../composables/usePermissions';
 import { getCurrentEmployee } from '../../services/admin-api';
 import { initials } from '../../services/format';
 import AdminLogin from './AdminLogin.vue';
 import AdminEnterpriseChoice from './AdminEnterpriseChoice.vue';
+import AdminInviteAccept from './AdminInviteAccept.vue';
 import RequestLog from './RequestLog.vue';
 import AdminDashboard from './AdminDashboard.vue';
 import AdminDrops from './AdminDrops.vue';
@@ -30,20 +32,26 @@ import AdminIntegrations from './AdminIntegrations.vue';
 import PlanSignup from '../plans/PlanSignup.vue';
 
 // Shell do painel da loja (patterns/app-shell.md): rail com os módulos,
-// topbar com o ambiente e a pessoa logada, e a tela da rota.
+// topbar com o ambiente e a pessoa logada, e a tela da rota. Módulo sem a
+// permissão de leitura some do rail; `ownerOnly` é o que o back ainda não mapeou
+// para perfis (só o dono principal acessa).
 const SECTIONS = [
   { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard, routes: ['admin-dashboard'] },
-  { label: 'Drops', path: '/admin/drops', icon: Rocket, routes: ['admin-drops', 'admin-drop', 'admin-drop-new', 'admin-drop-tab'] },
-  { label: 'Drop ao vivo', path: '/admin/ao-vivo', icon: Radio, routes: ['admin-live'] },
-  { label: 'Pedidos', path: '/admin/pedidos', icon: Receipt, routes: ['admin-orders'] },
-  { label: 'Catálogo', path: '/admin/catalogo', icon: Package, routes: ['admin-catalog', 'admin-coupons', 'admin-suppliers'] },
-  { label: 'Fraude', path: '/admin/fraude', icon: ShieldAlert, routes: ['admin-fraud'] },
-  { label: 'Financeiro', path: '/admin/financeiro', icon: Wallet, routes: ['admin-finance'] },
-  { label: 'Clientes', path: '/admin/clientes', icon: Users, routes: ['admin-customers'] },
-  { label: 'Plano', path: '/admin/plano', icon: BadgeDollarSign, routes: ['admin-plan'] },
-  { label: 'Integrações', path: '/admin/integracoes', icon: Plug, routes: ['admin-integrations'] },
+  { label: 'Drops', path: '/admin/drops', icon: Rocket, routes: ['admin-drops', 'admin-drop', 'admin-drop-new', 'admin-drop-tab'], permission: 'drop.events.view' },
+  { label: 'Drop ao vivo', path: '/admin/ao-vivo', icon: Radio, routes: ['admin-live'], permission: 'drop.events.view' },
+  { label: 'Pedidos', path: '/admin/pedidos', icon: Receipt, routes: ['admin-orders'], permission: 'orders.view' },
+  { label: 'Catálogo', path: '/admin/catalogo', icon: Package, routes: ['admin-catalog', 'admin-coupons', 'admin-suppliers'], permission: ['products.view', 'categories.view', 'coupons.view', 'suppliers.manage'] },
+  { label: 'Fraude', path: '/admin/fraude', icon: ShieldAlert, routes: ['admin-fraud'], ownerOnly: true },
+  { label: 'Financeiro', path: '/admin/financeiro', icon: Wallet, routes: ['admin-finance'], ownerOnly: true },
+  { label: 'Clientes', path: '/admin/clientes', icon: Users, routes: ['admin-customers'], permission: 'customers.view' },
+  { label: 'Plano', path: '/admin/plano', icon: BadgeDollarSign, routes: ['admin-plan'], ownerOnly: true },
+  { label: 'Integrações', path: '/admin/integracoes', icon: Plug, routes: ['admin-integrations'], permission: 'settings.manage' },
   { label: 'Configurações', path: '/admin/configuracoes', icon: Settings, routes: ['admin-settings'] },
 ];
+
+const { can, isOwner } = usePermissions();
+const sectionAllowed = (s) => (s.ownerOnly ? isOwner.value : !s.permission || [].concat(s.permission).some((code) => can(code)));
+const sections = computed(() => SECTIONS.filter(sectionAllowed));
 
 const PAGES = {
   'admin-dashboard': AdminDashboard,
@@ -72,6 +80,11 @@ const page = computed(() => {
   return PAGES[route.value.name] ?? AdminDashboard;
 });
 const isCurrent = (section) => section.routes.includes(route.value.name);
+// Sem permissão no módulo, a rota digitada à mão também não abre a tela.
+const blocked = computed(() => {
+  const section = SECTIONS.find(isCurrent);
+  return Boolean(section) && !sectionAllowed(section);
+});
 
 const signedIn = computed(() => isSignedIn(REALMS.backoffice));
 const restoring = ref(!IS_MOCK && !signedIn.value);
@@ -79,10 +92,11 @@ const employee = ref(null);
 
 // Token sem loja (várias ou nenhuma): só a escolha de loja aparece.
 const needsEnterprise = computed(() => signedIn.value && !hasSelectedEnterprise());
+const accepting = computed(() => route.value.name === 'admin-invite');
 const choosingEnterprise = computed(() => needsEnterprise.value || route.value.name === 'admin-enterprise-choice');
 
 watch([needsEnterprise, restoring], ([needs, isRestoring]) => {
-  if (needs && !isRestoring) navigate('/admin/entrar/loja');
+  if (needs && !isRestoring && !accepting.value) navigate('/admin/entrar/loja');
 }, { immediate: true });
 
 // Funcionário da topbar: recarrega quando muda o vínculo, não a cada renovação.
@@ -136,7 +150,7 @@ const logout = () => logoutEmployee().catch(() => {});
         aria-label="Módulos do painel"
       >
         <a
-          v-for="section in SECTIONS"
+          v-for="section in sections"
           :key="section.path"
           class="ds-icon-btn ds-icon-btn--ghost"
           :href="href(section.path)"
@@ -202,7 +216,7 @@ const logout = () => logoutEmployee().catch(() => {});
             aria-label="Módulos do painel"
           >
             <a
-              v-for="section in SECTIONS"
+              v-for="section in sections"
               :key="section.path"
               class="ds-nav__item ds-nowrap"
               :href="href(section.path)"
@@ -237,10 +251,18 @@ const logout = () => logoutEmployee().catch(() => {});
             v-else-if="!signedIn"
             @signed-in="onSignedIn"
           />
+          <AdminInviteAccept v-else-if="accepting" />
           <AdminEnterpriseChoice
             v-else-if="choosingEnterprise"
             @selected="onEnterpriseSelected"
           />
+          <div
+            v-else-if="blocked"
+            class="ds-empty"
+            role="alert"
+          >
+            Você não tem permissão para abrir esta área.
+          </div>
           <component
             :is="page"
             v-else

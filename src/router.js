@@ -28,6 +28,7 @@ const ROUTES = [
   ['admin-dashboard', '/admin'],
   ['admin-dashboard', '/admin/dashboard'],
   ['admin-enterprise-choice', '/admin/entrar/loja'],
+  ['admin-invite', '/admin/convite'],
   ['admin-drops', '/admin/drops'],
   ['admin-drop-new', '/admin/drops/novo'],
   ['admin-drop', '/admin/drops/:id'],

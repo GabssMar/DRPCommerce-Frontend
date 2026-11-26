@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive } from 'vue';
 import { AlertCircle, Store } from '@lucide/vue';
+import { href } from '../../router';
 import { useAction, useAsync } from '../../composables/useAsync';
 import { listMyEnterprises, registerEnterprise } from '../../services/admin-api';
 import { logoutEmployee, selectEnterprise } from '../../services/auth';
@@ -9,7 +10,8 @@ import { labelOf, MEMBERSHIP_KIND, STATES } from '../../services/status';
 import LoadState from '../ui/LoadState.vue';
 
 // Escolha da loja (#/admin/entrar/loja). Rotas (/api/store): GET enterprises/mine,
-// POST auth/select-enterprise e, sem loja, POST enterprises/register. O back ainda não informa se a loja está pausada.
+// POST auth/select-enterprise e, sem loja, POST enterprises/register. Quem foi
+// convidado aceita em #/admin/convite. O back ainda não informa se a loja está pausada.
 const emit = defineEmits(['selected']);
 
 const list = useAsync(listMyEnterprises, { initial: [] });
@@ -306,13 +308,19 @@ const leave = useAction(logoutEmployee);
       </form>
     </LoadState>
 
-    <button
-      type="button"
-      class="ds-btn ds-btn--ghost ds-self-start"
-      :disabled="leave.isPending.value"
-      @click="leave.run()"
-    >
-      Sair e entrar com outra conta
-    </button>
+    <div class="ds-cluster ds-cluster--2">
+      <a
+        class="ds-btn ds-btn--secondary"
+        :href="href('/admin/convite')"
+      >Tenho um convite</a>
+      <button
+        type="button"
+        class="ds-btn ds-btn--ghost"
+        :disabled="leave.isPending.value"
+        @click="leave.run()"
+      >
+        Sair e entrar com outra conta
+      </button>
+    </div>
   </section>
 </template>

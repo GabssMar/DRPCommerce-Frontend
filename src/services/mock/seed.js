@@ -560,11 +560,30 @@ export function createSeed(now = Date.now()) {
     id: e.enterpriseMembershipId, enterpriseId: ENTERPRISE_ID, userId: e.id, kindId: e.id === 1 ? 1 : 3,
     isActive: e.isActive, joinedAt: e.hiredAt,
   }));
+  db['store/permissions'] = [
+    ['products.view', 'Ver produtos', 'Products'], ['products.create', 'Cadastrar produtos', 'Products'],
+    ['products.edit', 'Editar produtos', 'Products'], ['products.change_price', 'Alterar preço', 'Products'],
+    ['products.delete', 'Excluir produtos', 'Products'], ['orders.view', 'Ver pedidos', 'Orders'],
+    ['orders.manage', 'Gerenciar pedidos', 'Orders'], ['customers.view', 'Ver clientes', 'Customers'],
+    ['customers.manage', 'Gerenciar clientes', 'Customers'], ['employees.manage', 'Gerenciar funcionários', 'Employees'],
+    ['drop.events.view', 'Ver drops', 'Drop'], ['drop.events.manage', 'Gerenciar drops', 'Drop'],
+    ['categories.view', 'Ver categorias', 'Categories'], ['categories.manage', 'Gerenciar categorias', 'Categories'],
+    ['coupons.view', 'Ver cupons', 'Coupons'], ['coupons.manage', 'Gerenciar cupons', 'Coupons'],
+    ['suppliers.manage', 'Gerenciar fornecedores', 'Suppliers'], ['inventory.manage', 'Movimentar estoque', 'Inventory'],
+    ['orders.cancel', 'Cancelar pedidos', 'Orders'], ['orders.refund', 'Estornar pedidos', 'Orders'],
+    ['settings.manage', 'Configurações da loja', 'Settings'],
+  ].map(([code, name, module], i) => ({ id: i + 1, code, name, description: '', module, isActive: true }));
   db['store/access-roles'] = [[1, 'Administração'], [2, 'Operação de drops'], [3, 'Atendimento']].map(([id, name]) => ({
     id, enterpriseId: ENTERPRISE_ID, name, normalizedName: name.toUpperCase(), description: '', isActive: true,
   }));
+  db['store/access-role-permissions'] = [
+    [1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21]], [2, [1, 11, 12, 15, 16]], [3, [6, 7, 8, 19]],
+  ].flatMap(([accessRoleId, ids]) => ids.map((permissionId) => ({ enterpriseId: ENTERPRISE_ID, accessRoleId, permissionId })));
+  db['store/membership-access-roles'] = [[2, 2], [3, 3], [4, 3]].map(([enterpriseMembershipId, accessRoleId]) => ({
+    enterpriseId: ENTERPRISE_ID, enterpriseMembershipId, accessRoleId,
+  }));
   db['store/invitations'] = [
-    { id: 1, email: 'novo.atendente@exemplo.com', kindId: 3, expiresAt: iso(now + 5 * DAY), acceptedAt: null, revokedAt: null },
+    { id: 1, email: 'NOVO.ATENDENTE@EXEMPLO.COM', kindId: 3, expiresAt: iso(now + 2 * DAY), acceptedAt: null, revokedAt: null },
   ];
   db.enterprise = {
     id: ENTERPRISE_ID, tradeName: 'Veloce Labs', legalName: 'Veloce Comércio de Artigos Esportivos Ltda.',

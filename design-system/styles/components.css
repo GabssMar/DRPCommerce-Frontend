@@ -779,7 +779,8 @@
 /* -------------------------------------------- TABELA: extensões do painel */
 
 /* Container de rolagem: tabela larga não estoura a página. */
-.ds-table-scroll { overflow-x: auto; }
+/* position: rótulo .ds-sr-only (absoluto) dentro da tabela fica preso na rolagem, sem alargar a página. */
+.ds-table-scroll { position: relative; overflow-x: auto; }
 
 /* Barra acima e rodapé da tabela, dentro do card --flush. */
 .ds-table-header,
