@@ -135,6 +135,15 @@ export const FRAUD_SEVERITY = table([
   [4, 'Crítica', 'live'],
 ]);
 
+// Situação do cupom da vitrine (CouponAvailability do back, devolvida como número).
+export const COUPON_AVAILABILITY = table([
+  [1, 'Agendado', 'scheduled'],
+  [2, 'Ativo', 'success'],
+  [3, 'Expirado', 'done'],
+  [4, 'Esgotado', 'done'],
+  [5, 'Inativo', 'done'],
+]);
+
 export const COUPON_TYPE = table([
   [1, 'Percentual'],
   [2, 'Valor fixo'],

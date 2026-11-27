@@ -910,6 +910,155 @@ function categoryRoutes(method, path, body) {
   return null;
 }
 
+// ----------------------------------------------------------- CUPONS (task 36) ---
+
+const CONDITION_TYPES = [
+  { id: 1, description: 'Valor do pedido' },
+  { id: 2, description: 'Quantidade de itens do pedido' },
+  { id: 3, description: 'Compras anteriores do cliente' },
+  { id: 4, description: 'Total já gasto pelo cliente' },
+];
+const CONDITION_OPERATORS = [
+  { id: 1, description: 'Igual a' },
+  { id: 2, description: 'Maior que' },
+  { id: 3, description: 'Maior ou igual a' },
+  { id: 4, description: 'Menor que' },
+  { id: 5, description: 'Menor ou igual a' },
+  { id: 6, description: 'Entre (inclusive)' },
+  { id: 7, description: 'Maior que e menor que' },
+];
+const COMPARE = {
+  1: (v, a) => v === a,
+  2: (v, a) => v > a,
+  3: (v, a) => v >= a,
+  4: (v, a) => v < a,
+  5: (v, a) => v <= a,
+  6: (v, a, b) => v >= a && v <= b,
+  7: (v, a, b) => v > a && v < b,
+};
+
+// Situação em ordem de precedência: inativo, expirado, esgotado, agendado, ativo.
+const couponAvailability = (c) => {
+  const now = Date.now();
+  if (!c.isActive) return 5;
+  if (now > Date.parse(c.expiresAt)) return 3;
+  if (c.maxUses && c.usedCount >= c.maxUses) return 4;
+  if (now < Date.parse(c.startsAt)) return 1;
+  return 2;
+};
+
+const couponResponse = (c) => ({
+  id: c.id, code: c.code, typeId: c.couponTypeId, type: c.couponTypeId === 1 ? 'Percentual' : 'Valor fixo',
+  discountValue: c.discountValue, maxDiscountCap: c.maxDiscountCap, maxUses: c.maxUses, usedCount: c.usedCount,
+  isActive: c.isActive, isSingleUse: c.isSingleUse, startsAt: c.startsAt, expiresAt: c.expiresAt,
+  availability: couponAvailability(c),
+  conditions: (c.conditions ?? []).map((k) => {
+    const type = CONDITION_TYPES.find((t) => t.id === k.typeId);
+    const operator = CONDITION_OPERATORS.find((o) => o.id === k.operatorId);
+    return {
+      typeId: k.typeId, type: type.description, operatorId: k.operatorId, operator: operator.description, value: k.value,
+      secondValue: k.secondValue ?? null,
+      description: `${type.description} ${operator.description.toLowerCase()} ${k.value}${k.secondValue != null ? ` e ${k.secondValue}` : ''}`,
+    };
+  }),
+  createdAt: c.createdAt, updatedAt: c.updatedAt,
+});
+
+const couponError = (body, current) => {
+  const conditions = body.conditions ?? [];
+  if (conditions.length > 4 || new Set(conditions.map((k) => k.typeId)).size !== conditions.length) {
+    return problem(400, 'Validation.InvalidInput', 'Até 4 condições, uma por tipo.');
+  }
+  if (conditions.some((k) => ([6, 7].includes(k.operatorId) ? !(Number(k.secondValue) > Number(k.value)) : k.secondValue != null))) {
+    return problem(400, 'Validation.InvalidInput', 'Valores da condição inválidos.');
+  }
+  if (current?.usedCount > 0) {
+    const locked = ['code', 'couponTypeId', 'discountValue', 'maxDiscountCap', 'isSingleUse', 'startsAt'].some((k) => body[k] !== undefined && body[k] !== current[k]);
+    if (locked || JSON.stringify(conditions) !== JSON.stringify(current.conditions ?? [])) {
+      return problem(400, 'Coupon.InUse', 'O cupom já foi usado: só validade, limite de usos e ativação podem mudar.');
+    }
+    if (body.maxUses && body.maxUses < current.usedCount) return problem(400, 'Coupon.MaxUsesBelowUsage', 'O limite fica abaixo dos usos já feitos.');
+  }
+  return null;
+};
+
+function couponRoutes(method, path, body, query) {
+  const d = data();
+  const coupons = d['store/coupons'].filter((c) => !c.isDeleted);
+
+  if (path === 'coupons/condition-types' && method === 'GET') return ok(CONDITION_TYPES);
+  if (path === 'coupons/condition-operators' && method === 'GET') return ok(CONDITION_OPERATORS);
+
+  if (path === 'coupons/search' && method === 'GET') {
+    const code = (query.get('Code') ?? '').trim().toLowerCase();
+    const rows = coupons.filter((c) => {
+      if (code && !c.code.toLowerCase().includes(code)) return false;
+      if (query.get('TypeId') && c.couponTypeId !== Number(query.get('TypeId'))) return false;
+      if (query.get('IsActive') && c.isActive !== (query.get('IsActive') === 'true')) return false;
+      return !query.get('Availability') || couponAvailability(c) === Number(query.get('Availability'));
+    }).sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
+    const page = Number(query.get('Page') ?? 1);
+    const pageSize = Number(query.get('PageSize') ?? 20);
+    return ok({ items: rows.slice((page - 1) * pageSize, page * pageSize).map(couponResponse), totalCount: rows.length, page, pageSize });
+  }
+
+  const fromBody = (b) => ({
+    code: String(b.code).replace(/\s/g, '').toUpperCase(), couponTypeId: b.typeId, discountValue: b.discountValue,
+    maxDiscountCap: b.maxDiscountCap ?? 0, maxUses: b.maxUses ?? null, isActive: b.isActive, isSingleUse: b.isSingleUse,
+    startsAt: b.startsAt, expiresAt: b.expiresAt, conditions: b.conditions ?? [],
+  });
+  if (path === 'coupons/add' && method === 'POST') {
+    const error = couponError(body, null);
+    if (error) return error;
+    const entity = fromBody(body);
+    if (coupons.some((c) => c.code === entity.code)) return problem(409, 'Coupon.DuplicateCode', 'Já existe um cupom com este código.');
+    const c = { ...entity, id: nextIdOf(d['store/coupons']), enterpriseId: 1, usedCount: 0, isDeleted: false, deletedAt: null, createdAt: nowIso(), updatedAt: null };
+    d['store/coupons'].push(c);
+    return ok([couponResponse(c)]);
+  }
+  if (path === 'coupons/update' && method === 'PUT') {
+    const c = coupons.find((x) => x.id === body.id);
+    if (!c) return problem(404, 'Coupon.NotFound', 'Cupom não encontrado.');
+    const entity = fromBody(body);
+    const error = couponError({ ...entity, conditions: entity.conditions }, c);
+    if (error) return error;
+    if (coupons.some((x) => x.id !== c.id && x.code === entity.code)) return problem(409, 'Coupon.DuplicateCode', 'Já existe um cupom com este código.');
+    Object.assign(c, entity, { updatedAt: nowIso() });
+    return ok([couponResponse(c)]);
+  }
+
+  const activationMatch = path.match(/^coupons\/(\d+)\/activation$/);
+  if (activationMatch && method === 'PUT') {
+    const c = coupons.find((x) => x.id === Number(activationMatch[1]));
+    if (!c) return problem(404, 'Coupon.NotFound', 'Cupom não encontrado.');
+    if (typeof body !== 'boolean') return problem(400, 'Validation.InvalidInput', 'O corpo precisa ser true ou false.');
+    c.isActive = body;
+    return ok(couponResponse(c));
+  }
+
+  if (path === 'coupons/validate' && method === 'GET') {
+    const code = (query.get('Code') ?? '').toUpperCase();
+    const subTotal = Number(query.get('SubTotal') ?? 0);
+    const itemQuantity = Number(query.get('ItemQuantity') ?? 0);
+    const c = coupons.find((x) => x.code === code);
+    const result = (isValid, reasonCode, message, discountAmount = 0, conditions = []) => ok({
+      code, isValid, discountAmount, subTotalAfterDiscount: subTotal - discountAmount, reasonCode, message, conditions,
+    });
+    if (!c) return result(false, 'Coupon.NotFound', 'Cupom não encontrado.');
+    const response = couponResponse(c);
+    const reasons = { 5: ['Coupon.Inactive', 'O cupom está inativo.'], 3: ['Coupon.Expired', 'O cupom expirou.'], 4: ['Coupon.Exhausted', 'O cupom esgotou.'], 1: ['Coupon.NotStarted', 'O cupom ainda não começou.'] };
+    const reason = reasons[response.availability];
+    if (reason) return result(false, reason[0], reason[1], 0, response.conditions);
+    const values = { 1: subTotal, 2: itemQuantity, 3: 0, 4: 0 };
+    const failed = (c.conditions ?? []).find((k) => !COMPARE[k.operatorId](values[k.typeId], k.value, k.secondValue));
+    if (failed) return result(false, 'Coupon.ConditionNotMet', 'O pedido não atende às condições do cupom.', 0, response.conditions);
+    const raw = c.couponTypeId === 1 ? subTotal * (c.discountValue / 100) : c.discountValue;
+    const discount = Math.min(c.maxDiscountCap > 0 ? Math.min(raw, c.maxDiscountCap) : raw, subTotal);
+    return result(true, null, null, Math.round(discount * 100) / 100, response.conditions);
+  }
+  return null;
+}
+
 function storeBackoffice(method, path, body, who, query) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
@@ -1008,6 +1157,8 @@ function storeBackoffice(method, path, body, who, query) {
   if (inventory) return inventory;
   const categories = categoryRoutes(method, path, body);
   if (categories) return categories;
+  const couponsResult = couponRoutes(method, path, body, query);
+  if (couponsResult) return couponsResult;
 
   return null;
 }

@@ -104,3 +104,32 @@ export const reorderCategories = (items) => request('PUT', store('categories/reo
 // categoria ativa de fora dele. Sem destino e com produtos: 409 Category.HasProducts.
 export const deleteCategories = (ids, moveProductsToCategoryId = null) =>
   request('DELETE', store('categories/delete-with-products'), opts({ ids, moveProductsToCategoryId }));
+
+// -------------------------------------------------------------- CUPONS ---
+
+// Task 36 (cupons da vitrine; os de drop seguem no CRUD do Drop).
+// Filtros: code, typeId (1 percentual, 2 valor fixo), isActive, availability (1 a 5), page, pageSize.
+// { id, code, typeId, discountValue, maxDiscountCap, maxUses, usedCount, isActive, isSingleUse,
+//   startsAt, expiresAt, availability, conditions: [{ typeId, operatorId, value, secondValue, description }] }
+export const searchCoupons = async (filters) =>
+  toPage(await request('GET', store(`coupons/search${searchQuery(filters)}`), opts()));
+
+// O add e o update devolvem lista com o cupom. Corpo: code, typeId, discountValue, maxDiscountCap,
+// maxUses, isActive, isSingleUse, startsAt, expiresAt, conditions: [{ typeId, operatorId, value, secondValue }].
+// Cupom já usado só aceita mudar expiresAt, maxUses e isActive (400 Coupon.InUse).
+export const createCoupon = async (coupon) => (await request('POST', store('coupons/add'), opts(coupon)))[0];
+export const updateCoupon = async (coupon) => (await request('PUT', store('coupons/update'), opts(coupon)))[0];
+
+// Corpo booleano puro (true/false), não { isActive }.
+export const setCouponActivation = (id, active) => request('PUT', store(`coupons/${id}/activation`), opts(active));
+
+// [{ id, description }]: nenhum id fica fixo na tela.
+export const listConditionTypes = () => request('GET', store('coupons/condition-types'), opts());
+export const listConditionOperators = () => request('GET', store('coupons/condition-operators'), opts());
+
+// Simula o cupom sem reservar uso. Cupom inexistente devolve isValid false e reasonCode.
+export const validateCoupon = ({ code, subTotal, itemQuantity, customerId }) => {
+  const query = new URLSearchParams({ Code: code, SubTotal: subTotal, ItemQuantity: itemQuantity });
+  if (customerId) query.set('CustomerId', customerId);
+  return request('GET', store(`coupons/validate?${query}`), opts());
+};

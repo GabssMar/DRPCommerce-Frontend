@@ -195,6 +195,11 @@ export function createSeed(now = Date.now()) {
     storeCoupon(2, 'FRETE20', 2, 20, 0, 150, null, 88, now - 10 * DAY, now + 40 * DAY, true),
     storeCoupon(3, 'INVERNO', 1, 20, 0, 0, 300, 300, now - 120 * DAY, now - 90 * DAY, false),
   ];
+  db['store/coupons'][1].conditions = [{ typeId: 1, operatorId: 3, value: 150, secondValue: null }];
+  db['store/coupons'].push({
+    ...storeCoupon(4, 'BLACK10', 1, 10, 80, 0, 200, 0, now + 6 * DAY, now + 20 * DAY, true),
+    conditions: [{ typeId: 2, operatorId: 3, value: 2, secondValue: null }, { typeId: 1, operatorId: 6, value: 100, secondValue: 600 }],
+  });
 
   // ---------------------------------------------------------------- DROPS ---
   const dropEvent = (id, productId, name, coverImageUrl, price, statusId, requiresRegistration, times, description) => ({
