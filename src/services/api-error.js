@@ -47,10 +47,15 @@ const parseRetryAfter = (value) => {
   return Number.isNaN(at) ? null : Math.max(0, Math.round((at - Date.now()) / 1000));
 };
 
+// 429: o tempo de espera vale mais que o texto do back. Sem contador de tentativas.
+const rateLimitMessage = (retryAfter) =>
+  retryAfter > 0 ? `Muitas tentativas. Tente de novo em ${retryAfter} s.` : '';
+
 export class ApiError extends Error {
   constructor({ status = 0, kind, code = '', message = '', fieldErrors = {}, traceId = '', retryAfter = null } = {}) {
     const finalKind = kind ?? kindOf(status);
-    super(message || KIND_MESSAGES[finalKind] || KIND_MESSAGES.unknown);
+    const text = (finalKind === 'rate-limit' && rateLimitMessage(retryAfter)) || message;
+    super(text || KIND_MESSAGES[finalKind] || KIND_MESSAGES.unknown);
     this.name = 'ApiError';
     this.status = status;
     this.kind = finalKind;
@@ -99,3 +104,12 @@ export class ApiError extends Error {
 
 export const timeoutError = () => new ApiError({ status: 0, kind: 'timeout', code: 'Timeout' });
 export const networkError = () => new ApiError({ status: 0, kind: 'network', code: 'Network' });
+
+// Mensagem de um campo do formulário: validação do back (fieldErrors) ou conflito
+// de unicidade pelo `code` (ex.: { 'Product.DuplicateSlug': 'slug' }).
+export const fieldMessage = (error, field, conflicts = {}) => {
+  if (!error) return '';
+  const key = Object.keys(error.fieldErrors ?? {}).find((k) => k.toLowerCase() === field.toLowerCase());
+  if (key) return error.fieldErrors[key][0];
+  return conflicts[error.code] === field ? error.message : '';
+};

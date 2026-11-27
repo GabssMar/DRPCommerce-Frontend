@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { AlertCircle, ArrowLeft, Check } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
 import { href, navigate } from '../../router';
-import { IS_MOCK } from '../../services/config';
+import { MOCK_HINTS } from '../../services/config';
 import { isSignedIn, REALMS } from '../../services/session';
 import { loginEmployee, registerEmployee, selectEnterprise } from '../../services/auth';
 import {
@@ -210,10 +210,10 @@ const pay = useAction(async () => {
             É com ela que você entra no painel da loja. É separada da conta de cliente.
           </p>
           <p
-            v-if="IS_MOCK"
+            v-if="MOCK_HINTS"
             class="ds-hint"
           >
-            Modo de exemplo: os dados não saem do navegador.
+            {{ MOCK_HINTS.planSignup }}
           </p>
         </header>
         <div

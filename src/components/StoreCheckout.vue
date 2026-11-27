@@ -6,8 +6,9 @@ import { useBag } from '../composables/useBag';
 import { href } from '../router';
 import { isSignedIn, REALMS } from '../services/session';
 import { getMe, getOrderDetail, getShippingQuotes, listAddresses, PAYMENT_METHODS, placeOrder } from '../services/client-api';
+import { getStoreInfo } from '../services/storefront-api';
 import { STATES, ufOf } from '../services/status';
-import { brl, formatDateTime } from '../services/format';
+import { brl, formatDateTime, formatMinutes } from '../services/format';
 import LoadState from './ui/LoadState.vue';
 import StepsBar from './ui/StepsBar.vue';
 
@@ -33,6 +34,14 @@ const loadError = computed(() => page.error.value ?? (bag.cart.value ? null : ba
 const summary = computed(() => bag.cart.value?.summary ?? null);
 const lines = computed(() => bag.items.value.filter((i) => i.isSelected && i.availability === 'available'));
 const appliedCoupon = computed(() => (summary.value?.coupon?.isValid ? summary.value.coupon : null));
+
+// Prazo para pagar (task 39, configurado pela loja). O pedido criado traz paymentExpiresAt;
+// antes de confirmar, o prazo vem dos dados públicos da loja. Falha aqui não trava a compra.
+const storeInfo = useAsync(() => getStoreInfo().catch(() => null));
+const paymentWindow = computed(() => {
+  const minutes = Number(storeInfo.data.value?.pendingOrderExpirationMinutes);
+  return minutes > 0 ? formatMinutes(minutes) : '';
+});
 
 // Etapas: 0 Sacola (feita) · 1 Entrega · 2 Pagamento · 3 Revisão.
 const STEPS = [{ label: 'Sacola' }, { label: 'Entrega' }, { label: 'Pagamento' }, { label: 'Revisão' }];
@@ -807,6 +816,14 @@ watch(() => confirmed.value?.paymentStatusId === 1, (pending, _, onCleanup) => {
               >Revisar a sacola</a>
             </div>
 
+            <p
+              v-if="step === 3"
+              class="ds-hint"
+            >
+              {{ paymentWindow
+                ? `Depois de confirmar, você tem ${paymentWindow} para pagar. Sem pagamento nesse prazo, o pedido é cancelado e os itens voltam ao estoque.`
+                : 'Depois de confirmar, o pedido aguarda o pagamento pelo prazo da loja. O horário limite aparece na confirmação e em Meus pedidos.' }}
+            </p>
             <button
               v-if="step === 3"
               type="submit"

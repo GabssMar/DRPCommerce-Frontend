@@ -28,14 +28,17 @@ import CustomerAuth from './components/account/CustomerAuth.vue';
 import LandingPage from './components/LandingPage.vue';
 import AccountOrders from './components/account/AccountOrders.vue';
 import AccountNotifications from './components/account/AccountNotifications.vue';
+import AccountNav from './components/account/AccountNav.vue';
+import AccountSecurity from './components/account/AccountSecurity.vue';
 import AccountAddresses from './components/account/AccountAddresses.vue';
-import AdminApp from './components/admin/AdminApp.vue';
 
 // (portal, detalhe do drop, vitrine, sacola) e as telas novas, que usam a
 // camada src/services/ no formato do back-end.
-// Simulador do drop: ferramenta de teste, só no servidor de desenvolvimento.
+// Simulador do drop: ferramenta de teste do mock, só no servidor de desenvolvimento.
 // Carregado sob demanda para não entrar no build de produção.
-const SHOW_SIMULATION = import.meta.env.DEV;
+// O painel (#/admin) é um pacote à parte: a loja não baixa o código da equipe.
+const AdminApp = defineAsyncComponent(() => import('./components/admin/AdminApp.vue'));
+const SHOW_SIMULATION = import.meta.env.DEV && IS_MOCK;
 const SimulationPanel = SHOW_SIMULATION ? defineAsyncComponent(() => import('./components/SimulationPanel.vue')) : null;
 const PAGE_BY_ROUTE = { portal: 'portal', drop: 'detail', vitrine: 'vitrine', 'vitrine-category': 'vitrine', product: 'product', cart: 'cart' };
 const currentPage = computed(() => PAGE_BY_ROUTE[route.value.name] ?? route.value.name);
@@ -197,7 +200,7 @@ const goToProduct = (slug) => navigate(`/vitrine/p/${encodeURIComponent(slug)}`)
 const goToCart = () => navigate('/sacola');
 
 const STORE_PAGES = ['vitrine', 'product', 'product-legacy', 'cart', 'checkout'];
-const ACCOUNT_PAGES = ['account', 'account-orders', 'account-order', 'account-notifications', 'account-addresses'];
+const ACCOUNT_PAGES = ['account', 'account-orders', 'account-order', 'account-notifications', 'account-addresses', 'account-security'];
 const isStorePage = computed(() => STORE_PAGES.includes(currentPage.value));
 const isOrdersPage = computed(() => ['account-orders', 'account-order'].includes(currentPage.value));
 const isDropsPage = computed(() => !isStorePage.value && !ACCOUNT_PAGES.includes(currentPage.value));
@@ -479,6 +482,19 @@ const dropBadge = computed(() => {
           Tentar de novo
         </button>
       </article>
+
+      <div
+        v-else-if="currentPage === 'account-security'"
+        class="ds-stack--6"
+      >
+        <div class="ds-cluster ds-cluster--between">
+          <h1 class="ds-title ds-title--lg">
+            Segurança
+          </h1>
+          <AccountNav />
+        </div>
+        <AccountSecurity :realm="REALMS.storefront" />
+      </div>
 
       <template v-else>
         <div class="ds-cluster ds-cluster--between">

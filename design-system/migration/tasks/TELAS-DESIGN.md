@@ -1,14 +1,15 @@
 # Telas do design "DRPCommerce — Telas futuras": tela → rota → back-end
 
 Implementação das 19 telas do canvas de design (C3–C13 do cliente, E1–E13 do painel).
-Rotas conferidas no `origin/main` do back-end em **2026-10-28** (commit `2088271`), não nas
+Painel (E5–E9, E12) atualizado em **2026-11-26** com as rotas das tasks 28 e 33 a 41. Demais rotas conferidas no `origin/main` do back-end em **2026-10-28** (commit `2088271`), não nas
 notas do canvas: onde o back-end mudou, vale o back-end. Esta página é a lista do que o
 front chama e do que ainda falta do lado do servidor.
 
 ## Como rodar
 
 ```bash
-npm run dev                 # VITE_API_MODE=mock (padrão): tudo funciona sem servidor
+npm run dev                 # back-end real pelo Gateway (VITE_API_MODE=http, padrão)
+VITE_API_MODE=mock npm run dev   # dados de exemplo, sem servidor (só em dev)
 # loja:   http://localhost:5173/#/drops/1/inscricao · #/conta · #/conta/pedidos
 # painel: http://localhost:5173/#/admin/dashboard  (só em dev ou com VITE_ADMIN_ENABLED=true)
 ```
@@ -53,14 +54,14 @@ e sacola até as tasks 15–18.
 | E2 Editor de drop | `#/admin/drops/:id` · `#/admin/drops/novo` | `drop-events` add/update · `drop-products` add-range/update-range/delete-range · `drop-coupons` add/update/delete · `GET products/get-all` | ✅ · ⚠ janela de checkout sem campo |
 | E3 Drop ao vivo | `#/admin/ao-vivo(/:id)` | `queue-entries`, `drop-reservations`, `waitlist-entries`, `fraud-signals`, `drop-audit-logs`, `drop-orders` (get-all) · `PUT queue-entries/update-range` (chamar lote) · `PUT drop-events/update` (encerrar) | ⚠ "Pausar fila" e ritmo automático sem campo |
 | E4 Inscrições, espera, avisos | `#/admin/drops/:id/inscricoes \| lista-de-espera \| avisos` | `drop-registrations` get-all/update-range · `waitlist-entries` get-all/update-range · `drop-notifications` get-all/add-range · `documents/get-all` | ✅ |
-| E5 Pedidos | `#/admin/pedidos` | `drop-orders` + `orders` get-all/update · `shipments` add/update · `invoices/add` · `drop-transactions\|transactions/add` (reembolso) · `customers/get-list-by-list-id` | ✅ · ⚠ pedido de drop sem envio/NF no domínio |
-| E6 Financeiro | `#/admin/financeiro(/notas)` | `drop-transactions` + `transactions` get-all/update · `invoices` get-all/add/update | ✅ |
-| E7 Catálogo e estoque | `#/admin/catalogo(/categorias)` | `products` + `categories` get-all/add/update · `suppliers/get-all` · `POST products/adjust-stock` | 🆕 estoque: `stockQuantity` e `adjust-stock` são da task 19 |
-| E8 Cupons | `#/admin/catalogo/cupons` | `coupons` + `drop-coupons` get-all/add/update | ✅ |
-| E9 Clientes | `#/admin/clientes` | `customers` get-all/update · `documents` get-all/update · pedidos, inscrições, filas e sinais (get-all) | ✅ |
+| E5 Pedidos | `#/admin/pedidos(/:id)` | vitrine: `GET orders/search` · `GET orders/{id}/detail` · `POST orders/{id}/confirm-payment \| start-processing \| ship \| deliver \| cancel` (task 37) · drop: `drop-orders/get-all` + `POST drop-purchases/{id}/fulfillment` · `customers/get-list-by-list-id` | ✅ vitrine testada contra o back local em 22/11 · ⚠ drop sem cancelamento nem estorno no back |
+| E6 Financeiro | `#/admin/financeiro(/notas)` | `drop-transactions` + `transactions` get-all (só leitura) · `invoices` get-all/update | ⚠ transações só leitura: o pagamento da vitrine é confirmado e estornado no pedido (E5) |
+| E7 Catálogo e estoque | `#/admin/catalogo` · `#/admin/catalogo/produtos/:id(/:tab)` · `#/admin/catalogo/categorias` | `GET products/search` · `products/{id}/details \| pricing \| dimensions \| category \| active` · `products/{id}/variants…` (task 33) · `inventory/variants/{id}(/adjust)` · `inventory/movements` · `inventory/reservations…` (task 34) · `categories/tree` · `categories/{id}/active` · `categories/reorder` · `categories/delete-with-products` (task 35) | ✅ testado contra o back local em 22/11 |
+| E8 Cupons | `#/admin/catalogo/cupons` | `GET coupons/search` · `coupons/add \| update` · `PUT coupons/{id}/activation` (corpo booleano) · `coupons/condition-types \| condition-operators` · `GET coupons/validate` (task 36) · drop: `drop-coupons` get-all/add/update | ✅ testado contra o back local em 22/11 |
+| E9 Clientes | `#/admin/clientes` | `GET customers/search` (métricas do back) · `customers/get-by-id` · `GET customers/{id}/addresses` · `GET orders/search?CustomerId` (task 38) · `documents` get-all/update · inscrições, filas e sinais (get-all) | ✅ testado contra o back local em 22/11 |
 | E10 Sinais de fraude | `#/admin/fraude` | `fraud-signals` get-all/update · `PUT queue-entries/update-range` (statusId 6) · `POST drop-audit-logs/add` | ✅ · auditoria gravada pelo front |
 | E11 Fornecedores e serviços | `#/admin/catalogo/fornecedores` | `suppliers` + `services` get-all/add/update · `categories/get-all` | ⚠ e-mail/telefone são value objects |
-| E12 Equipe e empresa | `#/admin/configuracoes(/empresa)` | `employees`, `employee-positions`, `departments` (CRUD) · `GET/POST/DELETE invitations` · `GET access-roles/get-all` · `GET enterprises/mine` · `PUT enterprises/current` · `GET storefront/store` | ⚠ sem GET completo da empresa |
+| E12 Equipe, empresa e configurações | `#/admin/configuracoes(/equipe \| vendas \| dominios \| empresa \| auditoria \| seguranca)` · `#/admin/convite` | `enterprise-memberships…` · `membership-access-roles/get-all` · `access-roles…` · `access-role-permissions/get-all` · `permissions/get-all` · `employees/{id}/deactivate` · `invitations` · `ownership-transfers` · `identity/*/accept` (task 40) · `GET/PUT store-settings` (task 39) · `enterprise-domains…` (task 41) · `auth/sessions` · `auth/change-password` (task 28) · `enterprises/mine \| current` | ✅ testado contra o back local em 22/11 · ⚠ só o dono principal gerencia acessos e domínios |
 | E13 Auditoria | `#/admin/configuracoes/auditoria` | `GET drop-audit-logs/get-all` · `POST employees/get-list-by-list-id` · `POST customers/get-list-by-list-id` | ✅ |
 
 Prefixos no Gateway: `drop-*`, `queue-*`, `waitlist-*`, `fraud-*` e `storefront/drop/*` ficam em `/api/drop`; o resto em `/api/store`.

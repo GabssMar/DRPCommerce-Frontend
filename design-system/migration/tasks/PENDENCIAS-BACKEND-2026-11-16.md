@@ -13,6 +13,8 @@ Testes de navegador (Playwright, Chrome) passando pelas **telas do front**, cont
 
 ## 1. O Gateway perde o Host: toda rota `storefront/*` responde 404 — **bloqueante**
 
+> **Resolvido (conferido em 22/11/2026):** com o back atual, `teste.stores.localhost:5173` → Gateway → Store responde 200 em `storefront/store` e nas rotas `storefront/auth/*`.
+
 A loja do cliente é resolvida pelo Host (`dominio_empresa.normalized_host = teste.stores.localhost`, ativo e verificado). O YARP troca o Host pelo do destino (`localhost:5001`) e o Store não lê o `X-Forwarded-Host`.
 
 | Caminho (`GET /api/storefront/auth/csrf`) | Resultado |
@@ -73,3 +75,75 @@ O front foi ajustado para o que o back exige hoje. Se alguma regra não for inte
 | `dateOfBirth` gravado como data (`1995-04-20T00:00:00Z`) | Convertia pelo fuso e cada "Salvar" voltava um dia | Data de calendário, sem fuso |
 
 Unidade das dimensões: o front usa **cm** e o peso em **kg**. Confirmar se é a mesma do back (frete).
+
+## 5. Sessões sem identificação do aparelho (task 28)
+
+`GET auth/sessions` e `GET storefront/auth/sessions` devolvem só `familyId`, `createdAt`, `expiresAt` e `isCurrent`. A tela de segurança mostra início e validade, mas não consegue dizer qual aparelho ou navegador é cada sessão. Sugestão: incluir um resumo do `User-Agent` (ex.: "Chrome no Windows") e a data do último uso.
+
+## 6. Lista de lojas não informa se a loja está pausada (task 28)
+
+`MembershipChoice` (login, `enterprises/mine`) tem só `membershipId`, `enterpriseId`, `tradeName` e `kindId`. A escolha de loja não consegue mostrar o selo "pausada" pedido na task. Sugestão: acrescentar `isActive` da Enterprise.
+
+
+## 7. Equipe e acessos (task 40)
+
+- **Sem rota de "minhas permissões".** O painel lê os claims `permission` e `membership_kind` do access token. Funciona, mas depende do formato do JWT (uma permissão só vem como texto, não como lista). Sugestão: `GET auth/me/permissions` com a lista e o tipo de vínculo.
+- **Sócio não vê a gestão de acesso.** A task pede leitura para o sócio-proprietário, mas todas as rotas de acesso (inclusive os GET) são `PrimaryOwnerOnly`. Hoje a aba Equipe fica escondida para quem não é o dono principal.
+- **Membros sem nome.** `enterprise-memberships/get-all` não traz nome nem e-mail; o painel cruza com `employees/get-all`, e o sócio aparece como "Sócio-proprietário · membro #id". Sugestão: incluir `fullName` e `email` do usuário.
+- **Transferência pendente não é listada.** Não há GET de `ownership-transfers`: depois de fechar a janela, o dono não consegue cancelar a transferência pelo painel.
+- **Fraude, Financeiro, Auditoria e Empresa** não estão na matriz de permissões (só o dono principal acessa). O rail esconde esses módulos para os demais.
+
+## 8. Produtos e variantes (task 33)
+
+- **Erros sem motivo.** Habilitar variantes (ou excluir SKU) com saldo, preço abaixo do custo e dimensão zerada em produto físico voltam como 400 genérico `Validation.InvalidInput`, sem `detail`. A tela mostra uma mensagem montada pelo contexto. Sugestão: códigos próprios (ex.: `Inventory.StockInUse`, como já existe em outras rotas).
+- **`ProductVariant.OptionSchema`** vem como erro de validação com o título genérico "Um ou mais erros de validação ocorreram".
+- **Sem volta para produto simples.** Não existe rota para desabilitar as variantes depois de habilitar; a tela pede confirmação antes.
+- **Lista sem nome da categoria nem saldo do produto.** `ProductResponse` só traz `categoryId` e o saldo por variante; a lista soma as variantes e busca as categorias à parte.
+
+## 9. Estoque (task 34)
+
+- **Conflito de versão é 409, não 412** (`Inventory.StaleVersion`). A tela trata o 409.
+- **Reservas não são listadas** e a resposta não diz se a reserva é de pedido: os botões Liberar e Efetivar aparecem em toda reserva e o 409 `Inventory.OrderReservationProtected` vira mensagem. Sugestão: `GET inventory/reservations` e um campo `orderId`/`source`.
+- **Movimentação sem nome do autor**: só `actorUserId`; a tabela mostra "#id".
+- **`GET inventory/movements` não filtra por produto**, só por SKU; sem SKU a lista traz toda a loja e a tela mostra só as linhas do produto aberto. Sugestão: filtro `productId`.
+
+## 10. Categorias (task 35)
+
+- **`PUT categories/{id}/active`, `add` e `update` devolvem a entidade crua** (com `listProduct`, `listCategory`, `enterprise`…), diferente de `categories/tree` e `search`, que têm DTO. Sugestão: `CategoryResponse` nas três.
+- **`add` e `update` devolvem lista com um item** (resquício do CRUD em lote).
+- **Exclusão não informa quantos produtos há.** A tela consulta `products/search?categoryId&includeSubcategories` antes de abrir o diálogo para saber se pede destino.
+- **Ordem dos irmãos não é validada**: `reorder` aceita ids de pais diferentes; a tela só manda irmãos.
+
+## 11. Cupons (task 36)
+
+- **Condições sem metadado.** `condition-types` e `condition-operators` devolvem só `id` e `description`. A tela não sabe quais operadores pedem segundo valor (entre, maior que e menor que) nem quais tipos são em dinheiro; hoje deduz pela descrição ("entre", " e ", "valor", "gasto"). Sugestão: `requiresSecondValue` no operador e `valueKind` (`money` | `count`) no tipo.
+- **`availability` volta como número** (1 a 5) na resposta e aceita nome ou número no filtro. A tela usa a tabela `COUPON_AVAILABILITY` do `status.js`. Sugestão: serializar o enum como texto.
+- **`add` e `update` devolvem lista com um item.**
+- **Simulador sem resultado por condição**: `validate` devolve as condições do cupom, mas não quais foram atendidas; a tela mostra só o motivo da recusa.
+- **Cliente do simulador** é digitado como número até a busca de clientes (task 38).
+
+## 12. Pedidos (task 37)
+
+- **Cancelar só exige `orders.cancel`**, e não `orders.manage`; com pedido pago, exige também `orders.refund` (403 `Security.PermissionRequired`). Não existe rota própria de estorno: o estorno é o cancelamento, e o pedido termina em Cancelado + Reembolso total (nunca em 7 Reembolsado). A tela bloqueia o botão antes, pelo token.
+- **Histórico sem nome do autor**: só `actorId` e `source` (numérico). A tela mostra "Painel · usuário #id".
+- **Erros de validação do envio** voltam como `ShipOrderCommand.Request.CarrierName` etc.; a tela mostra a primeira mensagem do campo.
+- **Pedido de Drop continua no CRUD do Drop** (sem rotas de ciclo); a aba Drop de Pedidos mantém o fluxo atual.
+- **Financeiro**: capturar, cancelar e estornar transação saíram da tela. O CRUD de `drop-transactions` responde 403 `DropPurchase.UseWorkflow`, e na vitrine o estorno é o cancelamento do pedido, acompanhado por `paymentOperations` no detalhe (reagendar falha e confirmar estorno manual pelas rotas `payment-operations/{id}/retry` e `confirm-manual-refund`). A nota fiscal voltou como **registro** de nota emitida fora (`invoices/add` exige número, série e chave de acesso); o back não emite NF-e.
+
+## 13. Clientes (task 38)
+
+- **A busca não devolve endereço nem CEP**, e a UF vem só como `stateId`. A ficha carrega `customers/get-by-id` para dados completos e `customers/{id}/addresses` para os endereços salvos (cliente sem endereço salvo mostra "Nenhum endereço salvo").
+- **Filtro de documento saiu da lista** (pendente, validado, rejeitado, sem documento): `documents` não tem busca nem filtro por cliente, e a ficha ainda lê `documents/get-all` uma vez. Sugestão: `documentStatusId` na busca de clientes e `GET documents?referenceType&referenceId`.
+- **Atividade em drops e sinais de fraude** seguem por `get-all` no Drop (sem busca por cliente).
+
+## 14. Configurações comerciais (task 39)
+
+- **O prazo de pagamento não aparece na rota pública.** `GET storefront/store` devolve moeda, pedido mínimo e limite de itens, mas não `pendingOrderExpirationMinutes`; o checkout (task 32) não consegue mostrar o prazo ao cliente. Sugestão: incluir o campo na resposta pública. O front já lê `pendingOrderExpirationMinutes` de `GET storefront/{slug}/store` quando vier e mostra "você tem N para pagar" na revisão do checkout; enquanto não vem, avisa que o horário limite aparece na confirmação (`paymentExpiresAt` do pedido).
+- **Mensagens de validação** chegam com o nome do campo em inglês separado ("min Order Value não pode ser negativo"). A tela barra antes do envio, com os mesmos limites, e usa texto próprio.
+
+## 15. Domínio próprio (task 41)
+
+- **O registro TXT só vem no cadastro.** A lista não devolve `recordName` nem `recordValue`: quem perder o valor precisa excluir o domínio e cadastrar de novo. Sugestão: devolver o desafio enquanto o domínio estiver pendente.
+- **Só existe "verificado".** Não há estado pendente nem falhou no back; a tela monta os dois a partir das respostas da verificação (`Domain.OwnershipUnverified` e `Domain.DnsUnavailable`), então o estado "Não verificado" some ao recarregar a página.
+- **Publicar domínio não verificado** volta como 400 genérico `Validation.InvalidInput`. A tela só oferece Publicar depois de verificado.
+- **O domínio da plataforma** (`teste.stores.localhost`) aparece na lista como principal. Se outro domínio virar principal, o da plataforma pode ser excluído e a loja deixa de responder no endereço padrão; a tela não protege esse caso.

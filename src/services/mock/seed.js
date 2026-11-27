@@ -113,6 +113,11 @@ export function createSeed(now = Date.now()) {
     description: '', imageUrl: '', displayOrder: i + 1, isActive: true, isDeleted: false, deletedAt: null,
     ...base(now - 300 * DAY),
   }));
+  db['store/categories'].push(...[[5, 'Cano alto', 1], [6, 'Cano baixo', 1]].map(([id, name, parentCategoryId], i) => ({
+    id, enterpriseId: ENTERPRISE_ID, parentCategoryId, name, slug: slugify(name),
+    description: '', imageUrl: '', displayOrder: i + 1, isActive: true, isDeleted: false, deletedAt: null,
+    ...base(now - 300 * DAY),
+  })));
 
   const supplier = (id, companyName, contactName, email, phone, city, stateId, isActive) => ({
     id, enterpriseId: ENTERPRISE_ID, companyName, contactName,
@@ -156,6 +161,21 @@ export function createSeed(now = Date.now()) {
     })),
   ];
 
+  // SKUs (task 33): o produto simples tem só o padrão; o moletom tem tamanhos.
+  const variant = (id, p, name, sku, attributes, isDefault, stockQuantity, priceOverride = null) => ({
+    id, productId: p.id, name, sku, barCode: '', attributes, isDefault, isActive: true, version: 1,
+    priceOverride, costPriceOverride: null, weightOverride: null, heightOverride: null, widthOverride: null, lengthOverride: null,
+    stockQuantity, reservedQuantity: 0,
+  });
+  db['store/product-variants'] = db['store/products'].map((p) => variant(p.id * 10, p, 'Padrão', p.sku, {}, true, p.id === 103 ? 0 : p.stockQuantity));
+  const hoodie = db['store/products'].find((p) => p.id === 103);
+  hoodie.hasVariants = true;
+  db['store/product-variants'].push(
+    variant(1031, hoodie, 'P', 'VLC-MOL-103-P', { Tamanho: 'P' }, false, 6),
+    variant(1032, hoodie, 'M', 'VLC-MOL-103-M', { Tamanho: 'M' }, false, 8),
+    variant(1033, hoodie, 'G', 'VLC-MOL-103-G', { Tamanho: 'G' }, false, 4, 229.90),
+  );
+
   db['store/services'] = [
     [1, 2, 'Personalização de nome', 29.90, 1440, true],
     [2, 1, 'Higienização de tênis', 59.90, 4320, true],
@@ -175,6 +195,11 @@ export function createSeed(now = Date.now()) {
     storeCoupon(2, 'FRETE20', 2, 20, 0, 150, null, 88, now - 10 * DAY, now + 40 * DAY, true),
     storeCoupon(3, 'INVERNO', 1, 20, 0, 0, 300, 300, now - 120 * DAY, now - 90 * DAY, false),
   ];
+  db['store/coupons'][1].conditions = [{ typeId: 1, operatorId: 3, value: 150, secondValue: null }];
+  db['store/coupons'].push({
+    ...storeCoupon(4, 'BLACK10', 1, 10, 80, 0, 200, 0, now + 6 * DAY, now + 20 * DAY, true),
+    conditions: [{ typeId: 2, operatorId: 3, value: 2, secondValue: null }, { typeId: 1, operatorId: 6, value: 100, secondValue: 600 }],
+  });
 
   // ---------------------------------------------------------------- DROPS ---
   const dropEvent = (id, productId, name, coverImageUrl, price, statusId, requiresRegistration, times, description) => ({
@@ -560,11 +585,30 @@ export function createSeed(now = Date.now()) {
     id: e.enterpriseMembershipId, enterpriseId: ENTERPRISE_ID, userId: e.id, kindId: e.id === 1 ? 1 : 3,
     isActive: e.isActive, joinedAt: e.hiredAt,
   }));
+  db['store/permissions'] = [
+    ['products.view', 'Ver produtos', 'Products'], ['products.create', 'Cadastrar produtos', 'Products'],
+    ['products.edit', 'Editar produtos', 'Products'], ['products.change_price', 'Alterar preço', 'Products'],
+    ['products.delete', 'Excluir produtos', 'Products'], ['orders.view', 'Ver pedidos', 'Orders'],
+    ['orders.manage', 'Gerenciar pedidos', 'Orders'], ['customers.view', 'Ver clientes', 'Customers'],
+    ['customers.manage', 'Gerenciar clientes', 'Customers'], ['employees.manage', 'Gerenciar funcionários', 'Employees'],
+    ['drop.events.view', 'Ver drops', 'Drop'], ['drop.events.manage', 'Gerenciar drops', 'Drop'],
+    ['categories.view', 'Ver categorias', 'Categories'], ['categories.manage', 'Gerenciar categorias', 'Categories'],
+    ['coupons.view', 'Ver cupons', 'Coupons'], ['coupons.manage', 'Gerenciar cupons', 'Coupons'],
+    ['suppliers.manage', 'Gerenciar fornecedores', 'Suppliers'], ['inventory.manage', 'Movimentar estoque', 'Inventory'],
+    ['orders.cancel', 'Cancelar pedidos', 'Orders'], ['orders.refund', 'Estornar pedidos', 'Orders'],
+    ['settings.manage', 'Configurações da loja', 'Settings'],
+  ].map(([code, name, module], i) => ({ id: i + 1, code, name, description: '', module, isActive: true }));
   db['store/access-roles'] = [[1, 'Administração'], [2, 'Operação de drops'], [3, 'Atendimento']].map(([id, name]) => ({
     id, enterpriseId: ENTERPRISE_ID, name, normalizedName: name.toUpperCase(), description: '', isActive: true,
   }));
+  db['store/access-role-permissions'] = [
+    [1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21]], [2, [1, 11, 12, 15, 16]], [3, [6, 7, 8, 19]],
+  ].flatMap(([accessRoleId, ids]) => ids.map((permissionId) => ({ enterpriseId: ENTERPRISE_ID, accessRoleId, permissionId })));
+  db['store/membership-access-roles'] = [[2, 2], [3, 3], [4, 3]].map(([enterpriseMembershipId, accessRoleId]) => ({
+    enterpriseId: ENTERPRISE_ID, enterpriseMembershipId, accessRoleId,
+  }));
   db['store/invitations'] = [
-    { id: 1, email: 'novo.atendente@exemplo.com', kindId: 3, expiresAt: iso(now + 5 * DAY), acceptedAt: null, revokedAt: null },
+    { id: 1, email: 'NOVO.ATENDENTE@EXEMPLO.COM', kindId: 3, expiresAt: iso(now + 2 * DAY), acceptedAt: null, revokedAt: null },
   ];
   db.enterprise = {
     id: ENTERPRISE_ID, tradeName: 'Veloce Labs', legalName: 'Veloce Comércio de Artigos Esportivos Ltda.',

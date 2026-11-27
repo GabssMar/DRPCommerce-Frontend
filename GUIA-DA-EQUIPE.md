@@ -97,8 +97,8 @@ frontend/
 
 | `VITE_API_MODE` | Comportamento |
 |---|---|
-| `mock` (padrão) | Sem servidor. As funções de `services/` caem em `mock/server.js`. Login do cliente: `camila.duarte@exemplo.com` + qualquer senha. Login do lojista: qualquer e-mail e senha. Os dois começam deslogados e as sessões de exemplo sobrevivem ao F5 (`sessionStorage`). O painel mostra as requisições que **seriam** enviadas |
-| `http` | Chama o Gateway (`https://localhost:5000`) pelo proxy do Vite. Abra o front em **http://teste.stores.localhost:5173** (a loja é identificada pelo subdomínio) |
+| `http` (padrão) | Chama o Gateway (`https://localhost:5000`) pelo proxy do Vite. Abra o front em **http://teste.stores.localhost:5173** (a loja é identificada pelo subdomínio). É o único modo do build de produção |
+| `mock` | Só em `npm run dev` (o build recusa). Sem servidor. As funções de `services/` caem em `mock/server.js`. Login do cliente: `camila.duarte@exemplo.com` + qualquer senha. Login do lojista: qualquer e-mail e senha. Os dois começam deslogados e as sessões de exemplo sobrevivem ao F5 (`sessionStorage`). O painel mostra as requisições que **seriam** enviadas |
 
 ---
 
@@ -118,6 +118,7 @@ frontend/
 | Login obrigatório na loja, página de apresentação para visitantes e página inicial por sessão (cliente vai aos drops, lojista ao dashboard; F5 restaura as duas sessões) | — | PR #30 |
 | Testes do front contra o back local e lista de pendências para o back | — | `TESTES-BACKEND-LOCAL-*.md`, `PENDENCIAS-BACKEND-*.md`, `../test-dashboard` |
 | Planos e assinatura: planos na landing page, cadastro do lojista com o plano escolhido (`#/admin/assinar/:planId`: conta → loja → pagamento no Mercado Pago) e tela **Plano** no painel (`#/admin/plano`: situação, consumo, troca com prévia de impacto em produtos e equipe, faturas) | — | `services/plans-api.js`, `components/plans/`, `AdminPlan.vue`, `mock/plans.js` |
+| Sessão completa (renovação entre abas, sessões ativas, troca de senha, escolha de loja) e painel com as rotas de negócio do back: equipe e permissões, produtos e variantes, estoque por SKU, categorias em árvore, cupons com condições, ciclo do pedido, clientes com métricas, configurações comerciais e domínio próprio | 28, 33–41 | `team-api.js`, `admin-catalog-api.js`, `usePermissions`, `usePagedSearch`; testadas contra o back local em 22–26/11 |
 
 ---
 
@@ -150,14 +151,16 @@ Legenda: ✅ testado com o back real · ⚠️ funciona, mas usa rota inadequada
 | Área | Rotas do back | Situação no modo http |
 |---|---|---|
 | Login, seleção de loja, F5, logout | `auth/*`, `enterprises/mine` | ✅ |
-| Catálogo: categorias e produtos | CRUD `categories`, `products` | ✅ criar/editar (dimensões e peso agora obrigatórios) |
-| Estoque do produto | `products/adjust-stock` | ❌ o back não tem estoque em `Product` nem essa rota (tasks 19, 34) |
+| Catálogo: produtos, variantes e categorias | `products/search`, `products/{id}/…`, `products/{id}/variants…`, `categories/tree`, `categories/reorder`… | ✅ (tasks 33 e 35) |
+| Estoque do produto | `inventory/variants/{id}(/adjust)`, `inventory/movements`, `inventory/reservations…` | ✅ por SKU, com versão (task 34) |
 | Drops: criar, editar variantes, abrir inscrições | CRUD `drop-events`, `drop-products`, `drop-coupons` | ✅ |
 | Dashboard de vendas | CRUD `orders`, `drop-orders` + soma no front (`sales.js`) | ⚠️ não existe `sales-summary`; o front baixa todos os pedidos e agrega |
-| Listas (pedidos, clientes, etc.) | `get-all` | ⚠️ paginação e filtros feitos no front |
-| Pedidos, financeiro, envio, nota, estorno | CRUD `orders`, `shipments`, `invoices`, `transactions` | ⚠️ grava por CRUD; o back passou a bloquear parte disso (task 37 troca pelas rotas de ciclo do pedido) |
-| Cupons, fornecedores, clientes, fraude, auditoria | CRUD correspondente | ⚠️ funcionam por CRUD; a auditoria é gravada pelo front |
-| Equipe e empresa | CRUD `employees`… + `invitations`, `access-roles`, `enterprises/current`, `storefront/store` | ⚠️ não há GET completo da empresa; o formulário pede tudo de novo |
+| Listas (produtos, cupons, pedidos, clientes) | rotas `search` | ✅ paginação e filtros no back (`usePagedSearch`) |
+| Pedidos e financeiro | `orders/search`, `orders/{id}/detail`, `orders/{id}/confirm-payment \| start-processing \| ship \| deliver \| cancel`; drop: `drop-purchases/{id}/fulfillment` | ✅ vitrine pelas rotas de ciclo (task 37); financeiro só leitura |
+| Cupons, clientes | `coupons/search`, `coupons/{id}/activation`, `coupons/validate`, `customers/search`, `customers/{id}/addresses` | ✅ (tasks 36 e 38) |
+| Fornecedores, fraude, auditoria | CRUD correspondente | ⚠️ funcionam por CRUD; a auditoria é gravada pelo front |
+| Equipe, permissões, vendas e domínios | `enterprise-memberships…`, `access-roles…`, `invitations`, `ownership-transfers`, `store-settings`, `enterprise-domains…` | ✅ (tasks 39, 40 e 41); só o dono principal gerencia acessos e domínios |
+| Empresa | `enterprises/current`, `storefront/store` | ⚠️ não há GET completo da empresa; o formulário pede tudo de novo |
 
 **Cliente (Minha conta, inscrição, lista de espera, checkout da vitrine)**
 
@@ -179,7 +182,6 @@ Desde 23/11 o back identifica a loja pelo **slug no caminho** (`storefront/{slug
 
 - Estoque do produto da vitrine (`stockQuantity`).
 - Resumo de vendas e ranking do dashboard.
-- Paginação e filtros das listas do painel.
 - Estoque disponível do drop (somado a partir de `drop-products` e `drop-reservations`).
 - Posição na lista de espera (calculada pelo front ao entrar).
 - Pagamento e frete: não existem (Mercado Pago e Melhor Envio dependem do back, task 43).
@@ -197,20 +199,20 @@ Cada arquivo em `design-system/migration/tasks/NN-*.md` é a descrição complet
 | 16 | Portal, detalhe e estoque do drop com dados reais | back 11, task 44 | feita em mock em 25/11 (`storefront/{slug}/drop/events(/{id})`, hora do servidor em `services/clock.js`); falta validar no back real |
 | 17 | Fila com CPF e sessão de compra de 15 min | back 12, 13, task 16 | feita em mock em 25/11 (`useDropQueue`, `mock/drop-queue.js`); falta validar no back real |
 | 18 | Reserva por variação e pagamento do drop | back 14, tasks 16 e 17 | feita em mock em 25/11 (`drop/DropPurchase.vue`); simulador `api.js` removido; falta validar no back real |
-| 28 | Sessão completa: renovação entre abas, sessões ativas, senha | 27 ✅ | login/cadastro já existem |
+| 28 | Sessão completa: renovação entre abas, sessões ativas, senha | 27 ✅ | feita; testada contra o back local em 22/11 |
 | 29 | Catálogo público: busca paginada, categorias, variantes por SKU | 27 ✅ | feita em mock; falta validar no back real |
 | 30 | Carrinho no servidor + prévia de cupom | 28, 29 | feita em mock (`#/sacola`); falta validar no back real |
 | 31 | Endereços de entrega do cliente | 27, 28 | feita em mock (`#/conta/enderecos`); falta validar no back real |
 | 32 | Checkout real da vitrine (idempotência, endereço, cancelamento) | 30, 31 | feita em mock (`#/checkout`, `#/conta/pedidos`); falta validar no back real |
-| 33 | Admin: produtos e variantes (SKUs) | 27 ✅ | |
-| 34 | Admin: estoque por SKU (saldo, ajuste com versão, movimentações) | 33 | |
-| 35 | Admin: categorias em árvore | 27 ✅ | |
-| 36 | Admin: cupons com condições e simulação | 27 ✅ | |
-| 37 | Admin: ciclo do pedido (pagamento manual, envio, entrega, cancelamento) | 27 ✅ | |
-| 38 | Admin: clientes com métricas, endereços e pedidos | 27, 37 | |
-| 39 | Admin: configurações comerciais da loja | 27 ✅ | |
-| 40 | Admin: equipe, perfis, permissões, convites | 27, 28 | convites já parcialmente feitos |
-| 41 | Admin: domínio próprio (verificação TXT) | 27, 40 | |
+| 33 | Admin: produtos e variantes (SKUs) | 27 ✅ | feita; testada contra o back local |
+| 34 | Admin: estoque por SKU (saldo, ajuste com versão, movimentações) | 33 | feita; testada contra o back local |
+| 35 | Admin: categorias em árvore | 27 ✅ | feita; componente `.ds-tree` |
+| 36 | Admin: cupons com condições e simulação | 27 ✅ | feita; testada contra o back local |
+| 37 | Admin: ciclo do pedido (pagamento manual, envio, entrega, cancelamento) | 27 ✅ | feita (vitrine); drop pela rota de fulfillment |
+| 38 | Admin: clientes com métricas, endereços e pedidos | 27, 37 | feita; testada contra o back local |
+| 39 | Admin: configurações comerciais da loja | 27 ✅ | feita; testada contra o back local |
+| 40 | Admin: equipe, perfis, permissões, convites | 27, 28 | feita; `usePermissions` aplicado no painel |
+| 41 | Admin: domínio próprio (verificação TXT) | 27, 40 | feita; publicação testada no mock (o back verifica o TXT no DNS real) |
 | 42 | Aparência: catálogo de temas, renderer e editor | 27, 40 | |
 | 43 | Pagamento (Mercado Pago) e frete (Melhor Envio) | 32 | feita em mock em 26/11: painel `#/admin/integracoes` (conectar Mercado Pago e Melhor Envio, escolher o provedor do checkout), status do pagamento e estorno no pedido. **Etiqueta** ainda não existe no back |
 | 44 | Catálogo do Drop e transferência entre vitrine e Drop | 27 | um produto é da vitrine **ou** do Drop, nunca dos dois; combinar com quem faz 33 e 34 |

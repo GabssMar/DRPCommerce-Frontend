@@ -2,9 +2,9 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { AlertCircle, FileText, LogOut } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
-import { navigate } from '../../router';
-import { authNotice, isSignedIn, REALMS } from '../../services/session';
-import { changeCustomerPassword, deleteCustomerAccount, logoutCustomer } from '../../services/auth';
+import { href, navigate } from '../../router';
+import { isSignedIn, REALMS } from '../../services/session';
+import { deleteCustomerAccount, logoutCustomer } from '../../services/auth';
 import { getDeletionEligibility, getMe, getMyDocuments, sendDocument, updateMe } from '../../services/client-api';
 import { DOCUMENT_STATUS, STATES } from '../../services/status';
 import { formatDate, formatDateYear, fromCalendarInput, toCalendarInput } from '../../services/format';
@@ -14,8 +14,9 @@ import ModalDialog from '../ui/ModalDialog.vue';
 import StatusBadge from '../ui/StatusBadge.vue';
 
 // C11 · Cadastro e meus dados. Rotas (back-end atual):
-//   GET/PUT storefront/me · POST storefront/auth/change-password | logout
+//   GET/PUT storefront/me · POST storefront/auth/logout
 //   GET storefront/me/deletion + DELETE storefront/me { currentPassword } (com CSRF)
+//   (senha e sessões ficam em AccountSecurity.vue, #/conta/seguranca)
 //   (entrar e criar conta ficam em CustomerAuth.vue)
 //   GET documents/get-all + POST documents/add (CPF, referenceType "Customer")
 const signedIn = computed(() => isSignedIn(REALMS.storefront));
@@ -75,15 +76,6 @@ const save = useAction(async () => {
 });
 
 const logout = useAction(logoutCustomer);
-
-// Senha
-const passwords = reactive({ currentPassword: '', newPassword: '' });
-const changePassword = useAction(async () => {
-  await changeCustomerPassword(passwords);
-  // A troca encerra a sessão: o App volta ao login, que mostra este aviso.
-  authNotice.storefront = 'Senha alterada. Entre de novo com a nova senha.';
-  Object.assign(passwords, { currentPassword: '', newPassword: '' });
-});
 
 // Documento
 const showDocumentModal = ref(false);
@@ -426,71 +418,22 @@ const removeAccount = useAction(async () => {
               </button>
             </article>
 
-            <form
-              class="ds-card ds-stack--4"
-              @submit.prevent="changePassword.run()"
-            >
+            <article class="ds-card ds-stack--3">
               <header class="ds-card__header">
                 <h2 class="ds-card__title">
-                  Senha
+                  Senha e sessões
                 </h2>
               </header>
-              <!-- Usuário oculto: o gerenciador de senhas sabe de qual conta é a senha. -->
-              <input
-                class="ds-sr-only"
-                type="email"
-                autocomplete="username"
-                :value="form.email"
-                tabindex="-1"
-                aria-hidden="true"
-                readonly
-              >
-              <div class="ds-field">
-                <label
-                  class="ds-label"
-                  for="ac-pass-current"
-                >Senha atual</label>
-                <input
-                  id="ac-pass-current"
-                  v-model="passwords.currentPassword"
-                  class="ds-input"
-                  type="password"
-                  autocomplete="current-password"
-                  required
-                >
-              </div>
-              <div class="ds-field">
-                <label
-                  class="ds-label"
-                  for="ac-pass"
-                >Nova senha</label>
-                <input
-                  id="ac-pass"
-                  v-model="passwords.newPassword"
-                  class="ds-input"
-                  type="password"
-                  autocomplete="new-password"
-                  minlength="8"
-                  placeholder="Mínimo 8 caracteres"
-                  required
-                >
-              </div>
-              <p
-                v-if="changePassword.error.value"
-                class="ds-error"
-                role="alert"
-              >
-                {{ changePassword.error.value.message }}
+              <p class="ds-text-sm ds-text-secondary">
+                Troque a senha e veja onde sua conta está aberta.
               </p>
-              <button
-                type="submit"
+              <a
                 class="ds-btn ds-btn--secondary ds-btn--block"
-                :disabled="changePassword.isPending.value"
+                :href="href('/conta/seguranca')"
               >
-                Alterar senha
-              </button>
-              <span class="ds-hint">Alterar a senha encerra suas sessões: você entra de novo com a nova senha.</span>
-            </form>
+                Abrir segurança
+              </a>
+            </article>
           </aside>
         </section>
       </LoadState>

@@ -290,26 +290,28 @@ Parâmetros: `from`, `to` (datas locais `YYYY-MM-DD`, inclusivas) e `granularity
 | Mudar de fase | `PUT /drop-events/update` com `dropEventStatusId` trocado | ✅ existe |
 | Estoque alocado | `GET /drop-products/get-by-event/{id}` · `PUT /drop-products/update` | 🆕 task 11 / ✅ update |
 
-#### Catálogo e estoque (`AdminCatalog.vue`)
+#### Rotas de negócio do painel (tasks 28 e 33–41, conferidas no back local em 22–26/11)
 
-| Ação | Endpoint | Situação |
+As listas do painel usam as rotas `search` do back (`PagedResponse<T>` + `toPage()`), com `usePagedSearch`. As permissões vêm do access token (`usePermissions`: claims `membership_kind` e `permission`); o back continua sendo a autoridade (403).
+
+| Área | Rotas (`/api/store/api`) | Serviço no front |
 |---|---|---|
-| Listar produtos | `GET /api/store/products/get-paged` | 🆕 task 19 §1 e §4 |
-| Criar / editar | `POST /api/store/products/add` · `PUT /api/store/products/update` | 🆕 task 19 §1 |
-| Categorias e fornecedores (selects) | `GET /api/store/categories/get-all` · `GET /api/store/suppliers/get-all` | 🆕 task 19 §1 |
-| Ajustar estoque | `POST /api/store/products/adjust-stock` body `{ productId, delta, reason }` | 🆕 task 19 §2 |
+| Sessões e senha (cliente e equipe) | `auth/sessions` · `DELETE auth/sessions/{familyId}` · `auth/logout-all` · `auth/change-password` (cliente: `storefront/{slug}/auth/*`) | `auth.js` |
+| Escolha de loja | `enterprises/mine` · `auth/select-enterprise` · `enterprises/register` | `auth.js`, `admin-api.js` |
+| Produtos e variantes | `GET products/search` · `products/get-by-id/{id}` · `POST products/add` · `PUT products/{id}/details \| pricing \| dimensions \| category \| active` · `PUT products/{id}/variants/enable` · `products/{id}/variants[/{vid}[/pricing \| /dimensions]]` | `admin-catalog-api.js` |
+| Estoque por SKU | `GET inventory/variants/{id}` · `PUT inventory/variants/{id}/adjust` (`expectedVersion`; conflito = 409 `Inventory.StaleVersion`) · `GET inventory/movements?ProductVariantId` · `inventory/reservations[/{id}[/release \| /commit]]` | `admin-catalog-api.js` |
+| Categorias | `GET categories/tree` · `categories/add \| update` (lista) · `PUT categories/{id}/active` · `PUT categories/reorder` · `DELETE categories/delete-with-products` | `admin-catalog-api.js` |
+| Cupons | `GET coupons/search` (`availability` 1–5) · `coupons/add \| update` · `PUT coupons/{id}/activation` (corpo `true`/`false`) · `GET coupons/condition-types \| condition-operators` · `GET coupons/validate` | `admin-catalog-api.js` |
+| Pedidos da vitrine | `GET orders/search` · `GET orders/{id}/detail` · `POST orders/{id}/confirm-payment \| start-processing \| ship \| deliver \| cancel` (cada uma devolve o detalhe) | `admin-api.js` |
+| Pedidos de drop | `drop-orders/get-all` · `POST /api/drop/api/drop-purchases/{id}/fulfillment` (3, 4 e 5, só depois do pagamento) | `admin-api.js` |
+| Clientes | `GET customers/search` (métricas do back) · `GET customers/{id}/addresses` · `GET orders/search?CustomerId` | `admin-api.js` |
+| Configurações comerciais | `GET/PUT store-settings` | `admin-api.js` |
+| Equipe e acessos | `permissions/get-all` · `access-roles…` · `access-role-permissions/get-all` · `enterprise-memberships…` · `membership-access-roles/get-all` · `PUT employees/{id}/deactivate` · `invitations` · `ownership-transfers` · `identity/invitations/accept` · `identity/ownership-transfers/accept` | `team-api.js` |
+| Domínio próprio | `enterprise-domains/get-all \| add` · `POST enterprise-domains/{id}/verify` · `PUT enterprise-domains/{id}/publication` · `DELETE enterprise-domains/{id}` | `team-api.js` |
 
-> ⚠️ **`Product` do StoreCommerce não tem campo de estoque.** Os campos reais são `enterpriseId`, `categoryId`, `supplierId`, `name`, `slug`, `description`, `sku`, `barCode`, `price`, `costPrice`, `weight`, `height`, `width`, `length`, `brand`, `imageUrls`, `isActive`, `isDigital`. O `stockQuantity` que a Vitrine exibe hoje é invenção do simulador, e `category` lá é **nome**, não `categoryId`. A modelagem do estoque é decisão pendente da task 19 §2 — registre aqui o que for decidido.
+O que o back ainda não oferece para essas telas está em `PENDENCIAS-BACKEND-2026-11-16.md` (itens 5 a 15).
 
-#### Pedidos (`AdminOrders.vue`)
-
-| Ação | Endpoint | Situação |
-|---|---|---|
-| Listar (drop) | `GET /drop-orders/get-paged?page=&statusId=&from=&to=&search=` | 🆕 task 19 §4 |
-| Listar (vitrine) | `GET /api/store/orders/get-paged` | 🆕 task 19 §1 e §4 |
-| Detalhe | `GET /drop-orders/get-by-id/{id}` · `GET /api/store/orders/get-by-id/{id}` | ✅ / 🆕 |
-| Itens | `POST /drop-order-items/get-list-by-list-id` · idem no Store | ✅ / 🆕 |
-| Mudar status | `PUT /drop-orders/update` · `PUT /api/store/orders/update` | ✅ / 🆕 |
+#### Pedido do drop × pedido da vitrine (entidades)
 
 **As duas entidades não são a mesma.** Campos que divergem e precisam de tradução na camada de dados:
 

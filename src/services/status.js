@@ -135,10 +135,27 @@ export const FRAUD_SEVERITY = table([
   [4, 'Crítica', 'live'],
 ]);
 
+// Situação do cupom da vitrine (CouponAvailability do back, devolvida como número).
+export const COUPON_AVAILABILITY = table([
+  [1, 'Agendado', 'scheduled'],
+  [2, 'Ativo', 'success'],
+  [3, 'Expirado', 'done'],
+  [4, 'Esgotado', 'done'],
+  [5, 'Inativo', 'done'],
+]);
+
 export const COUPON_TYPE = table([
   [1, 'Percentual'],
   [2, 'Valor fixo'],
 ]);
+
+// Regras das condições de cupom, iguais às do back (CouponConditionType.IsMonetary e
+// CouponConditionOperator.RequiresSecondValue). Os nomes e a lista vêm de
+// coupons/condition-types e coupons/condition-operators; aqui só o comportamento.
+const MONETARY_CONDITION_TYPES = new Set([1, 4]); // valor do pedido · total já gasto pelo cliente
+const TWO_VALUE_CONDITION_OPERATORS = new Set([6, 7]); // entre (inclusive) · maior que e menor que
+export const isMonetaryCondition = (typeId) => MONETARY_CONDITION_TYPES.has(Number(typeId));
+export const conditionNeedsSecondValue = (operatorId) => TWO_VALUE_CONDITION_OPERATORS.has(Number(operatorId));
 
 export const DOCUMENT_TYPE = table([
   [1, 'CPF'],
@@ -169,6 +186,35 @@ export const INVOICE_STATUS = table([
   [4, 'Cancelada', 'done'],
 ]);
 
+// Operações financeiras do pedido (paymentOperations no detalhe): enums
+// PaymentOperationKind e PaymentOperationStatus do back.
+export const PAYMENT_OPERATION_KIND = table([
+  [1, 'Cancelamento da cobrança'],
+  [2, 'Estorno integral'],
+]);
+export const PAYMENT_OPERATION_STATUS = table([
+  [1, 'Solicitado', 'scheduled'],
+  [2, 'Processando', 'waiting'],
+  [3, 'Aguardando o provedor', 'waiting'],
+  [4, 'Concluído', 'success'],
+  [5, 'Falhou', 'live'],
+  [6, 'Resultado incerto', 'waiting'],
+  [7, 'Aguardando confirmação manual', 'live'],
+  [8, 'Em revisão', 'live'],
+  [9, 'Substituído', 'done'],
+]);
+export const PAYMENT_OPERATION_FAILED = 5;
+export const PAYMENT_OPERATION_UNKNOWN = 6;
+export const PAYMENT_OPERATION_AWAITING_MANUAL = 7;
+export const PAYMENT_OPERATION_REVIEW = 8;
+// O back serializa o enum como número; aceita também o nome, caso a API passe a usar texto.
+const PAYMENT_OPERATION_NAMES = {
+  Cancel: 1, FullRefund: 2,
+  Requested: 1, Processing: 2, Pending: 3, Succeeded: 4, Failed: 5, OutcomeUnknown: 6,
+  AwaitingManualConfirmation: 7, ReviewRequired: 8, Superseded: 9,
+};
+export const paymentOperationCode = (value) => (typeof value === 'number' ? value : PAYMENT_OPERATION_NAMES[value] ?? Number(value));
+
 export const SHIPMENT_TYPE = table([
   [1, 'Normal'],
   [2, 'Expresso'],
@@ -186,11 +232,29 @@ export const SHIPMENT_STATUS = table([
   [7, 'Devolvido', 'done'],
 ]);
 
+// Quem fez a mudança no histórico do pedido (OrderChangeSource, numérico).
+export const ORDER_CHANGE_SOURCE = { 1: 'Cliente', 2: 'Painel', 3: 'Sistema', 4: 'Gateway de pagamento' };
+
 export const MEMBERSHIP_KIND = table([
   [1, 'Dono principal'],
   [2, 'Sócio-proprietário'],
   [3, 'Funcionário'],
 ]);
+
+// Módulo da permissão (o back devolve o nome em inglês), na ordem do editor de perfis.
+export const PERMISSION_MODULES = {
+  Products: 'Produtos',
+  Categories: 'Categorias',
+  Coupons: 'Cupons',
+  Inventory: 'Estoque',
+  Suppliers: 'Fornecedores',
+  Orders: 'Pedidos',
+  Customers: 'Clientes',
+  Employees: 'Funcionários',
+  Drop: 'Drops',
+  Settings: 'Configurações',
+  StoreHistory: 'Histórico da loja',
+};
 
 // UF: o id é o da tabela State do back-end (ordem alfabética pelo nome).
 export const STATES = [

@@ -779,7 +779,8 @@
 /* -------------------------------------------- TABELA: extensões do painel */
 
 /* Container de rolagem: tabela larga não estoura a página. */
-.ds-table-scroll { overflow-x: auto; }
+/* position: rótulo .ds-sr-only (absoluto) dentro da tabela fica preso na rolagem, sem alargar a página. */
+.ds-table-scroll { position: relative; overflow-x: auto; }
 
 /* Barra acima e rodapé da tabela, dentro do card --flush. */
 .ds-table-header,
@@ -1366,3 +1367,46 @@ button.ds-card { width: 100%; text-align: left; }
 
 .ds-dock__row-main { display: flex; align-items: center; gap: var(--ds-space-2); min-width: 0; }
 .ds-dock__truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- TREE ---
+   Hierarquia navegável por teclado (categorias). Lista plana: o recuo vem
+   da classe de nível. Veja components/tree.md.                            */
+
+.ds-tree { list-style: none; }
+
+.ds-tree__item {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-tap-min);
+  padding: var(--ds-space-1) var(--ds-space-4);
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+.ds-tree__item:last-child { border-bottom: none; }
+.ds-tree__item:hover { background: var(--ds-action-ghost-bg-hover); }
+.ds-tree__item:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+.ds-tree__item[aria-selected='true'] { background: var(--ds-surface-raised); }
+.ds-tree__item--level-2 { padding-inline-start: calc(var(--ds-space-4) + var(--ds-space-6)); }
+.ds-tree__item--level-3 { padding-inline-start: calc(var(--ds-space-4) + var(--ds-space-6) * 2); }
+
+.ds-tree__toggle,
+.ds-tree__spacer {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--ds-tap-min);
+  height: var(--ds-tap-min);
+}
+.ds-tree__toggle { border-radius: var(--ds-radius-sm); color: var(--ds-text-secondary); cursor: pointer; }
+.ds-tree__toggle:hover { color: var(--ds-text-primary); }
+.ds-tree__toggle:focus-visible { outline: none; box-shadow: var(--ds-ring); }
+
+.ds-tree__label { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ds-tree__item--inactive .ds-tree__label { color: var(--ds-text-secondary); }
+
+.ds-tree__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ds-space-1); }
+
+@media (max-width: 480px) {
+  .ds-tree__item { flex-wrap: wrap; padding-inline: var(--ds-space-2); }
+  .ds-tree__actions { flex-basis: 100%; justify-content: flex-start; }
+}

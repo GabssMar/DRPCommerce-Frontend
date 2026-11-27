@@ -1,5 +1,6 @@
 import { DROP_BASE, STORE_BASE, storefrontPath } from './config';
 import { request } from './http';
+import { searchQuery, toPage } from './paging';
 import { crud } from './resources';
 import { getAccessToken, REALMS } from './session';
 
@@ -118,7 +119,78 @@ export const scheduleNotifications = ({ eventId, customerIds, channelIds, typeId
     sentAt: null,
   }))));
 
+// -------------------------------------------------------- CONFIGURAÇÕES ---
+
+// Task 39 (settings.manage). Sem configuração salva, o GET devolve o padrão (id 0).
+// { currencyCode, minOrderValue, maxItemsPerOrder, allowBackorder, pendingOrderExpirationMinutes }
+export const getStoreSettings = () => request('GET', store('store-settings'), opts());
+export const updateStoreSettings = ({ currencyCode, minOrderValue, maxItemsPerOrder, allowBackorder, pendingOrderExpirationMinutes }) =>
+  request('PUT', store('store-settings'), opts({ currencyCode, minOrderValue, maxItemsPerOrder, allowBackorder, pendingOrderExpirationMinutes }));
+
+// --------------------------------------------------------------- CLIENTES ---
+
+// Task 38. Filtros: term (nome, e-mail ou telefone), isActive, isVerified, emailConfirmed, stateId,
+// hasOrders (com compra concluída), createdFrom, createdTo, sort (newest | oldest | name |
+// total_spent_desc | last_order_desc), page, pageSize. As métricas vêm calculadas do back:
+// { id, fullName, email, phone, city, stateId, isActive, isVerified, completedOrders, totalSpent, lastOrderAt }.
+export const searchCustomers = async (filters) => toPage(await request('GET', store(`customers/search${searchQuery(filters)}`), opts()));
+
+// [{ id, label, recipientName, addressLine, city, stateId, state, zipCode, country, isDefault }]
+export const listCustomerAddresses = (id) => request('GET', store(`customers/${id}/addresses`), opts());
+
 // ---------------------------------------------------------------- PEDIDOS ---
+
+// Vitrine (task 37): busca paginada e uma rota por transição, que movimenta
+// estoque e cupom na mesma transação. Cada transição devolve o detalhe atualizado.
+//   Filtros: number, statusIds[], paymentStatusIds[], customerId, couponId, createdFrom, createdTo,
+//   minTotal, maxTotal, sort (newest | oldest | total_desc | total_asc), page, pageSize.
+export const searchOrders = async (filters) => toPage(await request('GET', store(`orders/search${searchQuery(filters)}`), opts()));
+
+// Itens, cobrança, envios e histórico (linha do tempo).
+export const getOrderDetail = (id) => request('GET', store(`orders/${id}/detail`), opts());
+
+const transition = (id, action, body) => request('POST', store(`orders/${id}/${action}`), opts(body));
+
+// Pagamento conferido à mão. O método só é pedido quando o pedido ainda não tem cobrança.
+export const confirmPayment = (id, { transactionMethodId, gatewayReference, note } = {}) =>
+  transition(id, 'confirm-payment', { transactionMethodId, gatewayReference, note });
+export const startProcessing = (id) => transition(id, 'start-processing');
+// Produto físico exige shipmentTypeId, estimatedDelivery e, fora da retirada, carrierName.
+export const shipOrder = (id, { shipmentTypeId, carrierName, trackingCode, estimatedDelivery, note } = {}) =>
+  transition(id, 'ship', { shipmentTypeId, carrierName, trackingCode, estimatedDelivery, note });
+export const deliverOrder = (id) => transition(id, 'deliver');
+// Pedido pago: o estorno é registrado e a devolução do dinheiro é feita fora do sistema.
+export const cancelOrder = (id, reason) => transition(id, 'cancel', { reason });
+
+// Operações financeiras do pedido (estorno, cancelamento da cobrança), no detalhe em
+// `paymentOperations`. O back processa sozinho; a equipe só age em dois casos, com
+// orders.cancel + orders.refund (Documentation/Shared/CancelamentoEstorno.md):
+//   retry                  operação Failed (5): reagenda com a mesma chave. Sem corpo.
+//   confirm-manual-refund  estorno manual aguardando confirmação (7): { reference, note }.
+// As duas devolvem o detalhe atualizado.
+const paymentOperation = (orderId, operationId, action, body) =>
+  request('POST', store(`orders/${orderId}/payment-operations/${operationId}/${action}`), opts(body));
+export const retryPaymentOperation = (orderId, operationId) => paymentOperation(orderId, operationId, 'retry');
+export const confirmManualRefund = (orderId, operationId, { reference, note }) =>
+  paymentOperation(orderId, operationId, 'confirm-manual-refund', { reference, note });
+
+// Nota fiscal emitida fora do sistema (o back não emite NF-e): só registra número, série
+// e chave de acesso no pedido da vitrine. POST invoices/add; a chave é obrigatória.
+const INVOICE_ISSUED = 3;
+export const registerInvoice = ({ order, typeId, number, series, accessKey, taxAmount = 0, fileUrl = '', issuedAt }) =>
+  admin.invoices.add({
+    orderId: order.id,
+    customerId: order.customerId,
+    number,
+    series,
+    accessKey,
+    invoiceTypeId: typeId,
+    invoiceStatusId: INVOICE_ISSUED,
+    totalAmount: order.totalAmount,
+    taxAmount,
+    fileUrl,
+    issuedAt,
+  });
 
 // Compra do drop: o CRUD de drop-orders/drop-transactions responde 403
 // DropPurchase.UseWorkflow. Depois do pagamento confirmado e sem revisão financeira,
@@ -132,82 +204,8 @@ export const dropNextStatuses = (order) => {
   return DROP_FULFILLMENT_STATUSES.filter((s) => s > order.dropOrderStatusId);
 };
 
-export const setOrderStatus = (source, order, statusId) =>
-  source === 'drop'
-    ? request('POST', `${DROP_BASE}/drop-purchases/${order.id}/fulfillment`, opts({ statusId }))
-    : admin.orders.patch(order, { orderStatusId: statusId });
-
-// Reembolso: transação tipo 2 (Reembolso) + pedido 7 Reembolsado / pagamento 4.
-export const refundOrder = async (source, order, payment) => {
-  const now = new Date().toISOString();
-  const refund = {
-    customerId: order.customerId,
-    amount: order.totalAmount,
-    fee: 0,
-    gatewayReference: '',
-    gatewayProvider: payment?.gatewayProvider ?? '',
-    gatewayPayload: '{}',
-    paidAt: null,
-    refundedAt: now,
-  };
-  if (source === 'drop') throw new Error('Compras de drop ainda não têm estorno no back-end.');
-  await admin.transactions.add({
-    ...refund, orderId: order.id, transactionTypeId: 2,
-    transactionMethodId: payment?.transactionMethodId ?? 1, transactionStatusId: 6,
-  });
-  return admin.orders.patch(order, { orderStatusId: 7, orderPaymentStatusId: 4 });
-};
-
-// Envio da vitrine: cria ou atualiza o Shipment do pedido.
-export const saveShipment = (order, existing, { carrierName, shipmentTypeId, trackingCode, stateUf }) => {
-  const now = new Date().toISOString();
-  const fields = {
-    carrierName,
-    shipmentTypeId,
-    trackingCode,
-    shipmentStatusId: trackingCode ? 3 : 1,
-    shippedAt: trackingCode ? existing?.shippedAt ?? now : null,
-    // O comando recebe a UF como texto.
-    state: stateUf,
-  };
-  if (existing) return admin.shipments.patch(existing, fields);
-  return admin.shipments.add({
-    orderId: order.id,
-    supplierId: null,
-    shippingCost: order.shippingCost,
-    addressLine: order.shippingAddressLine,
-    city: order.shippingCity,
-    stateId: order.shippingStateId,
-    zipCode: order.shippingZipCode,
-    country: 'Brasil',
-    estimatedDelivery: new Date(Date.now() + 7 * 864e5).toISOString(),
-    deliveredAt: null,
-    ...fields,
-  });
-};
-
-// Nota fiscal (só pedidos da vitrine têm Invoice no back).
-export const issueInvoice = (order, sequence) =>
-  admin.invoices.add({
-    orderId: order.id,
-    customerId: order.customerId,
-    enterpriseId: order.enterpriseId,
-    number: String(sequence).padStart(6, '0'),
-    series: '1',
-    accessKey: '',
-    invoiceTypeId: 1,
-    invoiceStatusId: 1,
-    totalAmount: order.totalAmount,
-    taxAmount: order.taxAmount,
-    fileUrl: '',
-    issuedAt: null,
-  });
-
-// -------------------------------------------------------------- CATÁLOGO ---
-
-// Task 19: o back-end ainda não tem estoque em Product. Rota planejada.
-export const adjustStock = ({ productId, delta, reason }) =>
-  request('POST', store('products/adjust-stock'), opts({ productId, delta, reason }));
+export const advanceDropOrder = (order, statusId) =>
+  request('POST', `${DROP_BASE}/drop-purchases/${order.id}/fulfillment`, opts({ statusId }));
 
 // ------------------------------------------------------------- AUDITORIA ---
 
@@ -228,18 +226,18 @@ export const writeAudit = async ({ eventId, customerId = null, action, entityNam
   });
 };
 
-// --------------------------------------------------------- EQUIPE/EMPRESA ---
+// ---------------------------------------------------------------- EMPRESA ---
 
+// Lojas da conta: [{ membershipId, enterpriseId, tradeName, kindId }]. Aceita o
+// token global (antes de escolher a loja).
 export const listMyEnterprises = () => request('GET', store('enterprises/mine'), opts());
+// Primeira loja (ou mais uma): cria a empresa com a conta como dona principal.
+// Devolve { id, tradeName, isActive }; a sessão continua sem loja até o select-enterprise.
+export const registerEnterprise = (payload) => request('POST', store('enterprises/register'), opts(payload));
 export const updateEnterprise = (payload) => request('PUT', store('enterprises/current'), opts(payload));
 // Dados públicos da loja (nome, e-mail, telefone): o back não tem GET completo da empresa.
 // Rota do storefront: a loja vem do slug do endereço (STORE_SLUG), não do token.
 export const getPublicStore = () => request('GET', storefrontPath(STORE_BASE, 'store'), { realm: null });
-
-export const listInvitations = () => request('GET', store('invitations'), opts());
-export const inviteMember = ({ email, kindId, accessRoleIds }) => request('POST', store('invitations'), opts({ email, kindId, accessRoleIds }));
-export const revokeInvitation = (id) => request('DELETE', store(`invitations/${id}`), opts());
-export const listAccessRoles = () => request('GET', store('access-roles/get-all'), opts());
 
 // ------------------------------------------------------------ INTEGRAÇÕES ---
 // Task 43. Rotas do Store (MercadoPagoController, MelhorEnvioController,

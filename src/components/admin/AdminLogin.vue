@@ -1,29 +1,21 @@
 <script setup>
-import { reactive, ref } from 'vue';
-import { AlertCircle, ArrowLeft } from '@lucide/vue';
+import { reactive } from 'vue';
+import { AlertCircle, ArrowLeft, CheckCircle } from '@lucide/vue';
 import { href } from '../../router';
-import { IS_MOCK } from '../../services/config';
+import { MOCK_HINTS } from '../../services/config';
 import { useAction } from '../../composables/useAsync';
-import { loginEmployee, selectEnterprise } from '../../services/auth';
+import { loginEmployee } from '../../services/auth';
+import { authNotice } from '../../services/session';
 
-// Login da equipe: POST /api/store/auth/login e, com mais de uma loja,
-// POST /api/store/auth/select-enterprise.
+// Login da equipe: POST /api/store/api/auth/login. Quem tem várias lojas (ou
+// nenhuma) recebe um token sem loja e o painel abre a escolha (AdminEnterpriseChoice).
 const emit = defineEmits(['signed-in']);
 
 const credentials = reactive({ email: '', password: '' });
-const choices = ref([]);
 
 const login = useAction(async () => {
-  const result = await loginEmployee(credentials);
-  if (result?.requiresEnterpriseSelection && result.enterprises?.length > 1) {
-    choices.value = result.enterprises;
-    return;
-  }
-  emit('signed-in');
-});
-
-const choose = useAction(async (membershipId) => {
-  await selectEnterprise(membershipId);
+  await loginEmployee(credentials);
+  authNotice.backoffice = '';
   emit('signed-in');
 });
 </script>
@@ -49,41 +41,27 @@ const choose = useAction(async (membershipId) => {
         Acesso da equipe da loja. O login de cliente é separado.
       </p>
       <p
-        v-if="IS_MOCK"
+        v-if="MOCK_HINTS"
         class="ds-hint"
       >
-        Modo de exemplo: qualquer e-mail e senha entram como o lojista de exemplo.
+        {{ MOCK_HINTS.backoffice }}
       </p>
     </div>
 
-    <article
-      v-if="choices.length"
-      class="ds-card ds-stack--4"
+    <p
+      v-if="authNotice.backoffice"
+      class="ds-hint ds-text-success"
+      role="status"
     >
-      <h2 class="ds-card__title">
-        Qual loja?
-      </h2>
-      <button
-        v-for="choice in choices"
-        :key="choice.membershipId"
-        type="button"
-        class="ds-btn ds-btn--secondary ds-btn--block"
-        :disabled="choose.isPending.value"
-        @click="choose.run(choice.membershipId)"
-      >
-        {{ choice.tradeName }}
-      </button>
-      <p
-        v-if="choose.error.value"
-        class="ds-error"
-        role="alert"
-      >
-        {{ choose.error.value.message }}
-      </p>
-    </article>
+      <CheckCircle
+        :size="16"
+        :stroke-width="1.5"
+        aria-hidden="true"
+      />
+      {{ authNotice.backoffice }}
+    </p>
 
     <form
-      v-else
       class="ds-card ds-stack--5"
       @submit.prevent="login.run()"
     >

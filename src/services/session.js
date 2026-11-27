@@ -39,18 +39,49 @@ export const session = reactive({
 });
 
 // Aviso para a tela de login depois de uma saída forçada (ex.: senha alterada).
-export const authNotice = reactive({ storefront: '' });
+export const authNotice = reactive({ storefront: '', backoffice: '' });
+
+// Abas abertas compartilham a sessão: quem entra, renova, troca de loja ou sai
+// avisa as outras por este canal.
+const channels = {};
+
+const applySession = (realm, value) => {
+  session[realm] = value;
+  if (IS_MOCK) persistMockSession(realm, value);
+};
+
+if (typeof BroadcastChannel !== 'undefined') {
+  Object.values(REALMS).forEach((realm) => {
+    const channel = new BroadcastChannel(`drp-session-${realm}`);
+    channel.onmessage = ({ data }) => {
+      if (data?.type === 'set' && data.value?.accessToken) applySession(realm, data.value);
+      if (data?.type === 'clear') applySession(realm, null);
+    };
+    channels[realm] = channel;
+  });
+}
+
+const announce = (realm, message) => {
+  try {
+    channels[realm]?.postMessage(message);
+  } catch {
+    /* canal fechado: as outras abas descobrem na próxima renovação */
+  }
+};
 
 export const getAccessToken = (realm) => session[realm]?.accessToken ?? null;
 
 export const setSession = (realm, { accessToken, accessTokenExpiresAt }) => {
-  session[realm] = { accessToken, expiresAt: accessTokenExpiresAt ?? null };
-  if (IS_MOCK) persistMockSession(realm, session[realm]);
+  // Objeto simples: o proxy reativo do Vue não passa pelo postMessage (DataCloneError).
+  const value = { accessToken, expiresAt: accessTokenExpiresAt ?? null };
+  applySession(realm, value);
+  announce(realm, { type: 'set', value });
 };
 
-export const clearSession = (realm) => {
-  session[realm] = null;
-  if (IS_MOCK) persistMockSession(realm, null);
+// `broadcast: false` limpa só esta aba (ex.: renovação que falhou por rede).
+export const clearSession = (realm, { broadcast = true } = {}) => {
+  applySession(realm, null);
+  if (broadcast) announce(realm, { type: 'clear' });
 };
 
 export const isSignedIn = (realm) => Boolean(session[realm]?.accessToken);
@@ -65,10 +96,25 @@ export const tokenClaims = (token) => {
   }
 };
 
+// Vencido ou vencendo em 30 s. Token que não é JWT (mock) conta como vencido.
+export const tokenExpiresSoon = (token) => {
+  const exp = tokenClaims(token)?.exp;
+  return !exp || exp * 1000 - Date.now() < 30_000;
+};
+
 // Loja em que a equipe está trabalhando: claim EnterpriseId do token, gravado no
 // login (ou no select-enterprise, para quem tem mais de uma loja). Cadastros novos
 // (produto, categoria, fornecedor, cupom, drop...) levam esse id.
 const MOCK_ENTERPRISE_ID = 1;
+
+// Token da equipe sem loja escolhida (no mock, termina em "-global").
+export const hasSelectedEnterprise = () => {
+  const token = getAccessToken(REALMS.backoffice);
+  if (!token) return false;
+  if (IS_MOCK) return !token.endsWith('-global');
+  return Number(tokenClaims(token)?.EnterpriseId) > 0;
+};
+
 export const currentEnterpriseId = () => {
   const id = Number(tokenClaims(getAccessToken(REALMS.backoffice))?.EnterpriseId);
   if (id > 0) return id;

@@ -1,22 +1,24 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
-import { AlertCircle } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
 import { href } from '../../router';
-import { admin, issueInvoice, refundOrder } from '../../services/admin-api';
+import { admin, registerInvoice, searchOrders } from '../../services/admin-api';
 import {
   INVOICE_STATUS, INVOICE_TYPE, TRANSACTION_METHOD, TRANSACTION_STATUS, TRANSACTION_TYPE, labelOf, options,
 } from '../../services/status';
-import { brl, brlCompact, dropOrderCode, formatDateTime, formatNumber, localDayKey, storeOrderCode } from '../../services/format';
+import {
+  brl, brlCompact, dropOrderCode, formatDateTime, formatNumber, fromDateInput, localDayKey, storeOrderCode, toDateInput,
+} from '../../services/format';
+import { PAGE_SIZE_MAX } from '../../services/paging';
 import LoadState from '../ui/LoadState.vue';
 import ModalDialog from '../ui/ModalDialog.vue';
 import PaginationNav from '../ui/PaginationNav.vue';
 import StatusBadge from '../ui/StatusBadge.vue';
 
-// E6 · Financeiro. Rotas: GET drop-transactions/get-all + transactions/get-all,
-// PUT …/update (capturar: statusId 3 · cancelar: statusId 5), reembolso (transação typeId 2),
-// GET invoices/get-all · POST invoices/add · PUT invoices/update (cancelar: statusId 4).
-// Transações do drop só são lidas: o CRUD de drop-transactions responde 403 DropPurchase.UseWorkflow.
+// E6 · Financeiro. Rotas: GET drop-transactions/get-all + transactions/get-all, GET invoices/get-all,
+// POST invoices/add (registrar nota emitida fora) e PUT invoices/update (cancelar: statusId 4).
+// As transações só são lidas: o CRUD do drop responde 403 DropPurchase.UseWorkflow, e a vitrine
+// confirma, cancela e estorna pelo ciclo do pedido (Pedidos), que movimenta estoque e cupom junto.
 const props = defineProps({ params: { type: Object, default: () => ({}) } });
 
 const tab = computed(() => (props.params.tab === 'notas' ? 'notas' : 'transacoes'));
@@ -24,8 +26,8 @@ const PAGE_SIZE = 20;
 const PERIOD_DAYS = 14;
 
 const data = useAsync(async () => {
-  const [dropTx, storeTx, invoices, storeOrders] = await Promise.all([
-    admin.dropTransactions.getAll(), admin.transactions.getAll(), admin.invoices.getAll(), admin.orders.getAll(),
+  const [dropTx, storeTx, invoices] = await Promise.all([
+    admin.dropTransactions.getAll(), admin.transactions.getAll(), admin.invoices.getAll(),
   ]);
   const transactions = [
     ...dropTx.map((t) => ({
@@ -38,7 +40,7 @@ const data = useAsync(async () => {
     })),
   ].map((t) => ({ ...t, amount: t.raw.amount, fee: t.raw.fee, createdAt: t.raw.createdAt, reference: t.raw.gatewayReference }))
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  return { transactions, invoices, storeOrders };
+  return { transactions, invoices };
 });
 
 const codeOf = (t) => (t.source === 'drop' ? dropOrderCode(t.orderId) : storeOrderCode(t.orderId));
@@ -69,27 +71,6 @@ const rows = computed(() => (data.data.value?.transactions ?? [])
   .filter((t) => !filters.statusId || t.statusId === Number(filters.statusId)));
 const pageRows = computed(() => rows.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE));
 
-const resource = (t) => (t.source === 'drop' ? admin.dropTransactions : admin.transactions);
-const statusField = (t) => (t.source === 'drop' ? 'dropTransactionStatusId' : 'transactionStatusId');
-
-const capture = useAction(async (t) => {
-  await resource(t).patch(t.raw, { [statusField(t)]: 3, paidAt: new Date().toISOString() });
-  await data.reload();
-});
-const cancel = useAction(async (t) => {
-  await resource(t).patch(t.raw, { [statusField(t)]: 5 });
-  await data.reload();
-});
-
-const refunding = ref(null);
-const refund = useAction(async () => {
-  const t = refunding.value;
-  const order = t.source === 'drop' ? await admin.dropOrders.getById(t.orderId) : await admin.orders.getById(t.orderId);
-  await refundOrder(t.source, order, t.raw);
-  refunding.value = null;
-  await data.reload();
-});
-const actionError = computed(() => capture.error.value || cancel.error.value);
 
 // Notas fiscais
 const invoices = computed(() => [...(data.data.value?.invoices ?? [])].sort((a, b) => b.id - a.id));
@@ -99,22 +80,44 @@ const cancelInvoice = useAction(async (invoice) => {
   await data.reload();
 });
 
-const showEmit = ref(false);
-const emitOrderId = ref('');
+// Registrar nota: pedidos pagos da vitrine, fora de cancelado/reembolsado, sem nota ativa.
+const blankInvoice = () => ({
+  orderId: '', typeId: 1, number: '', series: '1', accessKey: '', taxAmount: 0, fileUrl: '', issuedDate: toDateInput(Date.now()),
+});
+const invoiceForm = reactive(blankInvoice());
+const registering = ref(false);
+const paidOrders = useAsync(
+  async () => (await searchOrders({ paymentStatusIds: [2], sort: 'newest', page: 1, pageSize: PAGE_SIZE_MAX })).items,
+  { immediate: false, initial: [] },
+);
 const invoiceable = computed(() => {
   const withInvoice = new Set(invoices.value.filter((i) => i.invoiceStatusId !== 4).map((i) => i.orderId));
-  return (data.data.value?.storeOrders ?? [])
-    .filter((o) => o.orderPaymentStatusId === 2 && ![6, 7].includes(o.orderStatusId) && !withInvoice.has(o.id))
-    .sort((a, b) => b.id - a.id);
+  return (paidOrders.data.value ?? []).filter((o) => ![6, 7].includes(o.statusId) && !withInvoice.has(o.id));
 });
-const emitNote = useAction(async () => {
-  const order = invoiceable.value.find((o) => o.id === Number(emitOrderId.value));
-  const next = Math.max(0, ...invoices.value.map((i) => Number(i.number) || 0)) + 1;
-  await issueInvoice(order, next);
-  showEmit.value = false;
-  emitOrderId.value = '';
+const register = useAction(async () => {
+  const order = invoiceable.value.find((o) => o.id === Number(invoiceForm.orderId));
+  await registerInvoice({
+    order,
+    typeId: Number(invoiceForm.typeId),
+    number: invoiceForm.number.trim(),
+    series: invoiceForm.series.trim(),
+    accessKey: invoiceForm.accessKey.replace(/\s/g, ''),
+    taxAmount: Number(invoiceForm.taxAmount) || 0,
+    fileUrl: invoiceForm.fileUrl.trim(),
+    issuedAt: fromDateInput(invoiceForm.issuedDate),
+  });
+  registering.value = false;
   await data.reload();
 });
+const openRegister = () => {
+  Object.assign(invoiceForm, blankInvoice());
+  register.error.value = null;
+  registering.value = true;
+  paidOrders.reload();
+};
+const invoiceReady = computed(() => Boolean(
+  invoiceForm.orderId && invoiceForm.number.trim() && invoiceForm.series.trim() && invoiceForm.accessKey.trim(),
+));
 </script>
 
 <template>
@@ -264,19 +267,6 @@ const emitNote = useAction(async () => {
         </select>
       </div>
 
-      <p
-        v-if="actionError"
-        class="ds-error"
-        role="alert"
-      >
-        <AlertCircle
-          :size="16"
-          :stroke-width="1.5"
-          aria-hidden="true"
-        />
-        {{ actionError.message }}
-      </p>
-
       <div class="ds-card ds-card--flush">
         <LoadState
           :is-empty="!rows.length"
@@ -350,40 +340,12 @@ const emitNote = useAction(async () => {
                   <td class="ds-table__td--numeric">
                     {{ brl(t.fee) }}
                   </td>
-                  <td>
-                    <button
-                      v-if="t.source === 'store' && t.typeId === 1 && t.statusId === 2"
-                      type="button"
-                      class="ds-btn ds-btn--secondary ds-btn--sm"
-                      :disabled="capture.isPending.value"
-                      @click="capture.run(t)"
-                    >
-                      Capturar
-                    </button>
-                    <button
-                      v-else-if="t.source === 'store' && t.typeId === 1 && t.statusId === 1"
-                      type="button"
-                      class="ds-btn ds-btn--ghost ds-btn--sm"
-                      :disabled="cancel.isPending.value"
-                      @click="cancel.run(t)"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      v-else-if="t.source === 'store' && t.typeId === 1 && t.statusId === 3"
-                      type="button"
-                      class="ds-btn ds-btn--ghost ds-btn--sm"
-                      @click="refunding = t"
-                    >
-                      Reembolsar
-                    </button>
-                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div class="ds-table-footer">
-            <span class="ds-hint">Capturar confirma um pagamento autorizado no cartão.</span>
+            <span class="ds-hint">Somente leitura: o pagamento da vitrine é confirmado e estornado no pedido, em Pedidos.</span>
             <PaginationNav
               v-model:page="page"
               :page-size="PAGE_SIZE"
@@ -405,9 +367,9 @@ const emitNote = useAction(async () => {
         <button
           type="button"
           class="ds-btn ds-btn--secondary ds-btn--sm"
-          @click="showEmit = true"
+          @click="openRegister"
         >
-          Emitir nota
+          Registrar nota
         </button>
       </header>
 
@@ -512,105 +474,188 @@ const emitNote = useAction(async () => {
         </table>
       </div>
       <p :class="['ds-hint', { 'ds-card__note': tab === 'notas' }]">
-        Pedidos de drop ainda não geram nota: a nota fiscal só aceita pedidos da vitrine.
+        O sistema não emite NF-e: registre aqui a nota emitida no seu emissor fiscal. Pedidos de drop ainda não aceitam nota.
       </p>
     </article>
   </LoadState>
 
   <ModalDialog
-    v-if="refunding"
-    title="Reembolsar pagamento"
-    @close="refunding = null"
-  >
-    <p class="ds-text-sm">
-      Registra o reembolso de {{ brl(refunding.amount) }} do pedido {{ codeOf(refunding) }} e marca o pedido como "Reembolsado".
-    </p>
-    <p
-      v-if="refund.error.value"
-      class="ds-error"
-      role="alert"
-    >
-      {{ refund.error.value.message }}
-    </p>
-    <template #footer>
-      <button
-        type="button"
-        class="ds-btn ds-btn--ghost"
-        @click="refunding = null"
-      >
-        Cancelar
-      </button>
-      <button
-        type="button"
-        class="ds-btn ds-btn--danger"
-        :disabled="refund.isPending.value"
-        @click="refund.run()"
-      >
-        Reembolsar
-      </button>
-    </template>
-  </ModalDialog>
-
-  <ModalDialog
-    v-if="showEmit"
-    title="Emitir nota fiscal"
-    @close="showEmit = false"
+    v-if="registering"
+    title="Registrar nota fiscal"
+    @close="registering = false"
   >
     <form
-      id="emit-form"
+      id="invoice-form"
       class="ds-stack--4"
-      @submit.prevent="emitNote.run()"
+      @submit.prevent="register.run()"
     >
+      <p class="ds-text-sm ds-text-secondary">
+        Para notas já emitidas no seu emissor fiscal. O registro não envia nada à SEFAZ.
+      </p>
       <div class="ds-field">
         <label
           class="ds-label"
-          for="emit-order"
+          for="inv-order"
         >Pedido da vitrine (pago, sem nota)</label>
         <select
-          id="emit-order"
-          v-model="emitOrderId"
+          id="inv-order"
+          v-model="invoiceForm.orderId"
           class="ds-input"
           required
+          :disabled="paidOrders.isLoading.value"
         >
           <option
             value=""
             disabled
           >
-            Selecione
+            {{ paidOrders.isLoading.value ? 'Carregando pedidos…' : invoiceable.length ? 'Selecione' : 'Nenhum pedido pago sem nota' }}
           </option>
           <option
             v-for="o in invoiceable"
             :key="o.id"
             :value="o.id"
           >
-            {{ storeOrderCode(o.id) }} · {{ brl(o.totalAmount) }}
+            #{{ o.number }} · {{ o.customerName }} · {{ brl(o.totalAmount) }}
           </option>
         </select>
-        <span class="ds-hint">A nota nasce "Pendente" até a autorização da SEFAZ.</span>
+        <span
+          v-if="paidOrders.error.value"
+          class="ds-error"
+          role="alert"
+        >{{ paidOrders.error.value.message }}</span>
+        <span
+          v-else
+          class="ds-hint"
+        >Lista os {{ PAGE_SIZE_MAX }} pedidos pagos mais recentes.</span>
+      </div>
+      <div class="ds-grid ds-grid--sidebar">
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="inv-type"
+          >Tipo</label>
+          <select
+            id="inv-type"
+            v-model.number="invoiceForm.typeId"
+            class="ds-input"
+          >
+            <option
+              v-for="t in options(INVOICE_TYPE)"
+              :key="t.id"
+              :value="t.id"
+            >
+              {{ t.label }}
+            </option>
+          </select>
+        </div>
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="inv-date"
+          >Emitida em</label>
+          <input
+            id="inv-date"
+            v-model="invoiceForm.issuedDate"
+            class="ds-input"
+            type="date"
+            required
+          >
+        </div>
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="inv-number"
+          >Número</label>
+          <input
+            id="inv-number"
+            v-model="invoiceForm.number"
+            class="ds-input"
+            maxlength="100"
+            required
+          >
+        </div>
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="inv-series"
+          >Série</label>
+          <input
+            id="inv-series"
+            v-model="invoiceForm.series"
+            class="ds-input"
+            maxlength="100"
+            required
+          >
+        </div>
+      </div>
+      <div class="ds-field">
+        <label
+          class="ds-label"
+          for="inv-key"
+        >Chave de acesso</label>
+        <input
+          id="inv-key"
+          v-model="invoiceForm.accessKey"
+          class="ds-input ds-mono"
+          maxlength="500"
+          inputmode="numeric"
+          required
+        >
+        <span class="ds-hint">Na NF-e, os 44 dígitos impressos no DANFE.</span>
+      </div>
+      <div class="ds-grid ds-grid--sidebar">
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="inv-tax"
+          >Impostos (R$)</label>
+          <input
+            id="inv-tax"
+            v-model="invoiceForm.taxAmount"
+            class="ds-input"
+            type="number"
+            min="0"
+            step="0.01"
+          >
+        </div>
+        <div class="ds-field">
+          <label
+            class="ds-label"
+            for="inv-file"
+          >Link do PDF ou XML (opcional)</label>
+          <input
+            id="inv-file"
+            v-model="invoiceForm.fileUrl"
+            class="ds-input"
+            type="url"
+            maxlength="500"
+          >
+        </div>
       </div>
       <p
-        v-if="emitNote.error.value"
+        v-if="register.error.value"
         class="ds-error"
         role="alert"
       >
-        {{ emitNote.error.value.message }}
+        {{ Object.values(register.error.value.fieldErrors ?? {})[0]?.[0] ?? register.error.value.message }}
       </p>
     </form>
     <template #footer>
       <button
         type="button"
         class="ds-btn ds-btn--ghost"
-        @click="showEmit = false"
+        @click="registering = false"
       >
         Cancelar
       </button>
       <button
         type="submit"
-        form="emit-form"
+        form="invoice-form"
         class="ds-btn ds-btn--primary"
-        :disabled="!emitOrderId || emitNote.isPending.value"
+        :disabled="!invoiceReady || register.isPending.value"
+        :aria-busy="register.isPending.value"
       >
-        Emitir
+        Registrar
       </button>
     </template>
   </ModalDialog>

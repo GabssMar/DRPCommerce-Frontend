@@ -1,48 +1,61 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import {
   BadgeDollarSign, LayoutDashboard, LogOut, Package, Plug, Radio, Receipt, Rocket, Settings, ShieldAlert, Users, Wallet,
 } from '@lucide/vue';
-import { focusMain, href, route } from '../../router';
+import { focusMain, href, navigate, route } from '../../router';
 import { IS_MOCK } from '../../services/config';
-import { isSignedIn, REALMS } from '../../services/session';
+import { getAccessToken, hasSelectedEnterprise, isSignedIn, REALMS, tokenClaims } from '../../services/session';
 import { logoutEmployee, restoreSession } from '../../services/auth';
+import { usePermissions } from '../../composables/usePermissions';
 import { getCurrentEmployee } from '../../services/admin-api';
 import { initials } from '../../services/format';
 import AdminLogin from './AdminLogin.vue';
+import AdminEnterpriseChoice from './AdminEnterpriseChoice.vue';
+import AdminInviteAccept from './AdminInviteAccept.vue';
 import RequestLog from './RequestLog.vue';
-import AdminDashboard from './AdminDashboard.vue';
-import AdminDrops from './AdminDrops.vue';
-import AdminDropEditor from './AdminDropEditor.vue';
-import AdminEngagement from './AdminEngagement.vue';
-import AdminLive from './AdminLive.vue';
-import AdminOrders from './AdminOrders.vue';
-import AdminFinance from './AdminFinance.vue';
-import AdminCatalog from './AdminCatalog.vue';
-import AdminCoupons from './AdminCoupons.vue';
-import AdminSuppliers from './AdminSuppliers.vue';
-import AdminCustomers from './AdminCustomers.vue';
-import AdminFraud from './AdminFraud.vue';
-import AdminSettings from './AdminSettings.vue';
-import AdminPlan from './AdminPlan.vue';
-import AdminIntegrations from './AdminIntegrations.vue';
-import PlanSignup from '../plans/PlanSignup.vue';
+
+// Cada tela do painel é um pedaço separado do build, baixado só quando é aberta.
+const AdminDashboard = defineAsyncComponent(() => import('./AdminDashboard.vue'));
+const AdminDrops = defineAsyncComponent(() => import('./AdminDrops.vue'));
+const AdminDropEditor = defineAsyncComponent(() => import('./AdminDropEditor.vue'));
+const AdminEngagement = defineAsyncComponent(() => import('./AdminEngagement.vue'));
+const AdminLive = defineAsyncComponent(() => import('./AdminLive.vue'));
+const AdminOrders = defineAsyncComponent(() => import('./AdminOrders.vue'));
+const AdminFinance = defineAsyncComponent(() => import('./AdminFinance.vue'));
+const AdminCatalog = defineAsyncComponent(() => import('./AdminCatalog.vue'));
+const AdminProductEditor = defineAsyncComponent(() => import('./AdminProductEditor.vue'));
+const AdminCategories = defineAsyncComponent(() => import('./AdminCategories.vue'));
+const AdminCoupons = defineAsyncComponent(() => import('./AdminCoupons.vue'));
+const AdminSuppliers = defineAsyncComponent(() => import('./AdminSuppliers.vue'));
+const AdminCustomers = defineAsyncComponent(() => import('./AdminCustomers.vue'));
+const AdminFraud = defineAsyncComponent(() => import('./AdminFraud.vue'));
+const AdminSettings = defineAsyncComponent(() => import('./AdminSettings.vue'));
+const AdminPlan = defineAsyncComponent(() => import('./AdminPlan.vue'));
+const AdminIntegrations = defineAsyncComponent(() => import('./AdminIntegrations.vue'));
+const PlanSignup = defineAsyncComponent(() => import('../plans/PlanSignup.vue'));
 
 // Shell do painel da loja (patterns/app-shell.md): rail com os módulos,
-// topbar com o ambiente e a pessoa logada, e a tela da rota.
+// topbar com o ambiente e a pessoa logada, e a tela da rota. Módulo sem a
+// permissão de leitura some do rail; `ownerOnly` é o que o back ainda não mapeou
+// para perfis (só o dono principal acessa).
 const SECTIONS = [
   { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard, routes: ['admin-dashboard'] },
-  { label: 'Drops', path: '/admin/drops', icon: Rocket, routes: ['admin-drops', 'admin-drop', 'admin-drop-new', 'admin-drop-tab'] },
-  { label: 'Drop ao vivo', path: '/admin/ao-vivo', icon: Radio, routes: ['admin-live'] },
-  { label: 'Pedidos', path: '/admin/pedidos', icon: Receipt, routes: ['admin-orders'] },
-  { label: 'Catálogo', path: '/admin/catalogo', icon: Package, routes: ['admin-catalog', 'admin-coupons', 'admin-suppliers'] },
-  { label: 'Fraude', path: '/admin/fraude', icon: ShieldAlert, routes: ['admin-fraud'] },
-  { label: 'Financeiro', path: '/admin/financeiro', icon: Wallet, routes: ['admin-finance'] },
-  { label: 'Clientes', path: '/admin/clientes', icon: Users, routes: ['admin-customers'] },
-  { label: 'Plano', path: '/admin/plano', icon: BadgeDollarSign, routes: ['admin-plan'] },
-  { label: 'Integrações', path: '/admin/integracoes', icon: Plug, routes: ['admin-integrations'] },
+  { label: 'Drops', path: '/admin/drops', icon: Rocket, routes: ['admin-drops', 'admin-drop', 'admin-drop-new', 'admin-drop-tab'], permission: 'drop.events.view' },
+  { label: 'Drop ao vivo', path: '/admin/ao-vivo', icon: Radio, routes: ['admin-live'], permission: 'drop.events.view' },
+  { label: 'Pedidos', path: '/admin/pedidos', icon: Receipt, routes: ['admin-orders'], permission: 'orders.view' },
+  { label: 'Catálogo', path: '/admin/catalogo', icon: Package, routes: ['admin-catalog', 'admin-categories', 'admin-product', 'admin-coupons', 'admin-suppliers'], permission: ['products.view', 'categories.view', 'coupons.view', 'suppliers.manage'] },
+  { label: 'Fraude', path: '/admin/fraude', icon: ShieldAlert, routes: ['admin-fraud'], ownerOnly: true },
+  { label: 'Financeiro', path: '/admin/financeiro', icon: Wallet, routes: ['admin-finance'], ownerOnly: true },
+  { label: 'Clientes', path: '/admin/clientes', icon: Users, routes: ['admin-customers'], permission: 'customers.view' },
+  { label: 'Plano', path: '/admin/plano', icon: BadgeDollarSign, routes: ['admin-plan'], ownerOnly: true },
+  { label: 'Integrações', path: '/admin/integracoes', icon: Plug, routes: ['admin-integrations'], permission: 'settings.manage' },
   { label: 'Configurações', path: '/admin/configuracoes', icon: Settings, routes: ['admin-settings'] },
 ];
+
+const { can, isOwner } = usePermissions();
+const sectionAllowed = (s) => (s.ownerOnly ? isOwner.value : !s.permission || [].concat(s.permission).some((code) => can(code)));
+const sections = computed(() => SECTIONS.filter(sectionAllowed));
 
 const PAGES = {
   'admin-dashboard': AdminDashboard,
@@ -54,6 +67,8 @@ const PAGES = {
   'admin-orders': AdminOrders,
   'admin-finance': AdminFinance,
   'admin-catalog': AdminCatalog,
+  'admin-product': AdminProductEditor,
+  'admin-categories': AdminCategories,
   'admin-coupons': AdminCoupons,
   'admin-suppliers': AdminSuppliers,
   'admin-customers': AdminCustomers,
@@ -71,29 +86,60 @@ const page = computed(() => {
   return PAGES[route.value.name] ?? AdminDashboard;
 });
 const isCurrent = (section) => section.routes.includes(route.value.name);
+// Sem permissão no módulo, a rota digitada à mão também não abre a tela.
+const blocked = computed(() => {
+  const section = SECTIONS.find(isCurrent);
+  return Boolean(section) && !sectionAllowed(section);
+});
 
 const signedIn = computed(() => isSignedIn(REALMS.backoffice));
 const restoring = ref(!IS_MOCK && !signedIn.value);
 const employee = ref(null);
 
-const loadEmployee = async () => {
-  employee.value = await getCurrentEmployee().catch(() => null);
-};
+// Token sem loja (várias ou nenhuma): só a escolha de loja aparece.
+const needsEnterprise = computed(() => signedIn.value && !hasSelectedEnterprise());
+const accepting = computed(() => route.value.name === 'admin-invite');
+const choosingEnterprise = computed(() => needsEnterprise.value || route.value.name === 'admin-enterprise-choice');
+
+watch([needsEnterprise, restoring], ([needs, isRestoring]) => {
+  if (needs && !isRestoring && !accepting.value) navigate('/admin/entrar/loja');
+}, { immediate: true });
+
+// Funcionário da topbar: recarrega quando muda o vínculo, não a cada renovação.
+const membershipKey = computed(() => {
+  const token = getAccessToken(REALMS.backoffice);
+  if (!token || !hasSelectedEnterprise()) return null;
+  return tokenClaims(token)?.MembershipId ?? token;
+});
+
+// Abas internas (produto, financeiro, configurações) trocam sem remontar a tela e sem perder o que foi digitado.
+// Trocar de loja em qualquer aba remonta tudo: a tela nunca mostra uma loja e grava em outra.
+const TAB_PAGES = new Set(['admin-product', 'admin-finance', 'admin-settings']);
+const pageKey = computed(() => {
+  const { name, params, path } = route.value;
+  return `${TAB_PAGES.has(name) ? `${name}/${params.id ?? ''}` : path}@${membershipKey.value}`;
+});
+
+watch(membershipKey, async (key) => {
+  employee.value = null;
+  if (key) employee.value = await getCurrentEmployee().catch(() => null);
+}, { immediate: true });
 
 onMounted(async () => {
   if (restoring.value) {
     await restoreSession(REALMS.backoffice);
     restoring.value = false;
   }
-  if (signedIn.value) loadEmployee();
 });
 
-const onSignedIn = () => loadEmployee();
-
-const logout = async () => {
-  await logoutEmployee().catch(() => {});
-  employee.value = null;
+// Entrou pela tela de escolha com uma loja só: o back já selecionou, vai ao dashboard.
+const onSignedIn = () => {
+  if (route.value.name === 'admin-enterprise-choice' && hasSelectedEnterprise()) navigate('/admin/dashboard');
 };
+
+const onEnterpriseSelected = () => navigate('/admin/dashboard');
+
+const logout = () => logoutEmployee().catch(() => {});
 </script>
 
 <template>
@@ -110,7 +156,7 @@ const logout = async () => {
         aria-label="Módulos do painel"
       >
         <a
-          v-for="section in SECTIONS"
+          v-for="section in sections"
           :key="section.path"
           class="ds-icon-btn ds-icon-btn--ghost"
           :href="href(section.path)"
@@ -176,7 +222,7 @@ const logout = async () => {
             aria-label="Módulos do painel"
           >
             <a
-              v-for="section in SECTIONS"
+              v-for="section in sections"
               :key="section.path"
               class="ds-nav__item ds-nowrap"
               :href="href(section.path)"
@@ -211,10 +257,22 @@ const logout = async () => {
             v-else-if="!signedIn"
             @signed-in="onSignedIn"
           />
+          <AdminInviteAccept v-else-if="accepting" />
+          <AdminEnterpriseChoice
+            v-else-if="choosingEnterprise"
+            @selected="onEnterpriseSelected"
+          />
+          <div
+            v-else-if="blocked"
+            class="ds-empty"
+            role="alert"
+          >
+            Você não tem permissão para abrir esta área.
+          </div>
           <component
             :is="page"
             v-else
-            :key="route.path"
+            :key="pageKey"
             :params="route.params"
           />
 
