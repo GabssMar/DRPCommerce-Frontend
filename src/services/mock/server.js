@@ -1,6 +1,6 @@
 import { createSeed, SIGNED_IN_CUSTOMER_ID, SIGNED_IN_EMPLOYEE_ID } from './seed';
 import { toEntity } from '../resources';
-import { ORDER_STATUS, PAYMENT_STATUS, SHIPMENT_STATUS, SHIPMENT_TYPE, TRANSACTION_METHOD, TRANSACTION_STATUS } from '../status';
+import { ORDER_STATUS, PAYMENT_STATUS, SHIPMENT_STATUS, SHIPMENT_TYPE, STATES, TRANSACTION_METHOD, TRANSACTION_STATUS } from '../status';
 import { createPlansMock } from './plans';
 import { createCatalogMock } from './catalog';
 import { createAddressesMock } from './addresses';
@@ -1227,6 +1227,60 @@ function orderRoutes(method, path, body, query) {
   return ok(detailOf(o));
 }
 
+// ---------------------------------------------------- CLIENTES (task 38) ---
+
+const CUSTOMER_SORTS = {
+  newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
+  oldest: (a, b) => a.createdAt.localeCompare(b.createdAt),
+  name: (a, b) => a.fullName.localeCompare(b.fullName),
+  total_spent_desc: (a, b) => b.totalSpent - a.totalSpent,
+  last_order_desc: (a, b) => (b.lastOrderAt ?? '').localeCompare(a.lastOrderAt ?? ''),
+};
+// Compra concluída: pedido confirmado, em processamento, enviado ou entregue.
+const COMPLETED_STATUSES = [2, 3, 4, 5];
+
+function customerRoutes(method, path, body, query) {
+  const d = data();
+  const customers = d['store/customers'].filter((c) => !c.isDeleted);
+
+  if (path === 'customers/search' && method === 'GET') {
+    const completed = d['store/orders'].filter((o) => !o.isDeleted && COMPLETED_STATUSES.includes(o.orderStatusId));
+    const term = (query.get('Term') ?? '').trim().toLowerCase();
+    const flag = (name) => (query.get(name) == null ? null : query.get(name) === 'true');
+    const rows = customers.map((c) => {
+      const mine = completed.filter((o) => o.customerId === c.id);
+      return {
+        id: c.id, fullName: c.fullName, email: c.email, phone: c.phone, city: c.city, stateId: c.stateId, isActive: c.isActive,
+        isVerified: c.isVerified, emailConfirmed: c.emailConfirmed, completedOrders: mine.length,
+        totalSpent: Math.round(mine.reduce((sum, o) => sum + o.totalAmount, 0) * 100) / 100,
+        lastOrderAt: mine.map((o) => o.createdAt).sort().at(-1) ?? null, createdAt: c.createdAt,
+      };
+    }).filter((c) => {
+      if (term && !`${c.fullName} ${c.email} ${c.phone}`.toLowerCase().includes(term)) return false;
+      if (query.get('StateId') && c.stateId !== Number(query.get('StateId'))) return false;
+      if (query.get('CreatedFrom') && c.createdAt < query.get('CreatedFrom')) return false;
+      if (query.get('CreatedTo') && c.createdAt > query.get('CreatedTo')) return false;
+      return [['IsActive', c.isActive], ['IsVerified', c.isVerified], ['EmailConfirmed', c.emailConfirmed], ['HasOrders', c.completedOrders > 0]]
+        .every(([name, value]) => flag(name) === null || flag(name) === value);
+    }).sort(CUSTOMER_SORTS[query.get('Sort')] ?? CUSTOMER_SORTS.newest);
+    const page = Number(query.get('Page') ?? 1);
+    const pageSize = Number(query.get('PageSize') ?? 20);
+    return ok({ items: rows.slice((page - 1) * pageSize, page * pageSize), totalCount: rows.length, page, pageSize });
+  }
+
+  const addressesMatch = path.match(/^customers\/(\d+)\/addresses$/);
+  if (addressesMatch && method === 'GET') {
+    const c = customers.find((x) => x.id === Number(addressesMatch[1]));
+    if (!c) return problem(404, 'Customer.NotFound', 'Cliente não encontrado.');
+    const stateName = (id) => STATES.find((s) => s.id === id)?.name ?? '';
+    return ok([
+      { id: c.id * 10, label: 'Casa', recipientName: c.fullName, addressLine: c.addressLine, city: c.city, stateId: c.stateId, state: stateName(c.stateId), zipCode: c.zipCode, country: c.country ?? 'Brasil', isDefault: true },
+      ...(c.id % 3 === 0 ? [{ id: c.id * 10 + 1, label: 'Trabalho', recipientName: c.fullName, addressLine: 'Av. Paulista, 1000', city: 'São Paulo', stateId: 25, state: stateName(25), zipCode: '01310100', country: 'Brasil', isDefault: false }] : []),
+    ]);
+  }
+  return null;
+}
+
 function storeBackoffice(method, path, body, who, query) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
@@ -1329,6 +1383,8 @@ function storeBackoffice(method, path, body, who, query) {
   if (couponsResult) return couponsResult;
   const ordersResult = orderRoutes(method, path, body, query);
   if (ordersResult) return ordersResult;
+  const customersResult = customerRoutes(method, path, body, query);
+  if (customersResult) return customersResult;
 
   return null;
 }

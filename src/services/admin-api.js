@@ -119,6 +119,17 @@ export const scheduleNotifications = ({ eventId, customerIds, channelIds, typeId
     sentAt: null,
   }))));
 
+// --------------------------------------------------------------- CLIENTES ---
+
+// Task 38. Filtros: term (nome, e-mail ou telefone), isActive, isVerified, emailConfirmed, stateId,
+// hasOrders (com compra concluída), createdFrom, createdTo, sort (newest | oldest | name |
+// total_spent_desc | last_order_desc), page, pageSize. As métricas vêm calculadas do back:
+// { id, fullName, email, phone, city, stateId, isActive, isVerified, completedOrders, totalSpent, lastOrderAt }.
+export const searchCustomers = async (filters) => toPage(await request('GET', store(`customers/search${searchQuery(filters)}`), opts()));
+
+// [{ id, label, recipientName, addressLine, city, stateId, state, zipCode, country, isDefault }]
+export const listCustomerAddresses = (id) => request('GET', store(`customers/${id}/addresses`), opts());
+
 // ---------------------------------------------------------------- PEDIDOS ---
 
 // Vitrine (task 37): busca paginada e uma rota por transição, que movimenta
