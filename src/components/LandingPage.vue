@@ -1,6 +1,6 @@
 <script setup>
 import { Timer, ShoppingBag, LayoutDashboard, UserRound, Store, ArrowRight } from '@lucide/vue';
-import { ADMIN_ENABLED } from '../services/config';
+import { ADMIN_ENABLED, HAS_STORE } from '../services/config';
 import { href } from '../router';
 import { useAsync } from '../composables/useAsync';
 import { addOnLabel, getPlanCatalog } from '../services/plans-api';
@@ -57,18 +57,20 @@ const DROP_STEPS = [
           e que também têm uma vitrine sempre aberta.
         </p>
         <div class="ds-cluster ds-cluster--2">
-          <a
-            class="ds-btn ds-btn--primary ds-btn--lg"
-            :href="href('/criar-conta')"
-          >
-            Criar conta
-          </a>
-          <a
-            class="ds-btn ds-btn--secondary ds-btn--lg"
-            :href="href('/entrar')"
-          >
-            Entrar
-          </a>
+          <template v-if="HAS_STORE">
+            <a
+              class="ds-btn ds-btn--primary ds-btn--lg"
+              :href="href('/criar-conta')"
+            >
+              Criar conta
+            </a>
+            <a
+              class="ds-btn ds-btn--secondary ds-btn--lg"
+              :href="href('/entrar')"
+            >
+              Entrar
+            </a>
+          </template>
           <button
             type="button"
             class="ds-btn ds-btn--ghost ds-btn--lg"
@@ -189,7 +191,10 @@ const DROP_STEPS = [
         Acesse
       </h2>
       <div class="ds-grid ds-grid--2">
-        <article class="ds-card ds-stack--4">
+        <article
+          v-if="HAS_STORE"
+          class="ds-card ds-stack--4"
+        >
           <div class="ds-cluster ds-cluster--2">
             <span class="ds-icon-tile">
               <UserRound

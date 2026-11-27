@@ -147,3 +147,12 @@ Unidade das dimensões: o front usa **cm** e o peso em **kg**. Confirmar se é a
 - **Só existe "verificado".** Não há estado pendente nem falhou no back; a tela monta os dois a partir das respostas da verificação (`Domain.OwnershipUnverified` e `Domain.DnsUnavailable`), então o estado "Não verificado" some ao recarregar a página.
 - **Publicar domínio não verificado** volta como 400 genérico `Validation.InvalidInput`. A tela só oferece Publicar depois de verificado.
 - **O domínio da plataforma** (`teste.stores.localhost`) aparece na lista como principal. Se outro domínio virar principal, o da plataforma pode ser excluído e a loja deixa de responder no endereço padrão; a tela não protege esse caso.
+
+## 16. Loja no caminho e publicação (27/11)
+
+Decisão: cada loja mora em `https://www.drpcommerce.com.br/nome-da-loja/`, com front e API no mesmo host (o Gateway encaminha para o container do front tudo o que não é `/api` ou `/health`). Guia em `deploy/README.md`.
+
+- **`enterprises/mine` não devolve o slug da loja.** `MembershipChoice` tem `membershipId`, `enterpriseId`, `tradeName`, `kindId`, `planId` e `contractRevision`. O painel mora na raiz do site e não sabe o endereço público da loja: "Ver loja" some e a aba Empresa não carrega e-mail e telefone públicos. Sugestão: incluir `storefrontSlug` em `MembershipChoice`. O front já lê o campo quando vier.
+- **URLs de retorno não aceitam `#`** (`MercadoPagoOptions.RequireHttps`, `MelhorEnvioOptions.IsPublicHttps`). O front converte os retornos por caminho: `/admin/integracoes`, `/admin/plano` e `/{storeSlug}/pagamento?orderId=N` (ou `dropOrderId`). Usa `admin`, reservado em `StorefrontSlug.Normalize`.
+- **`deploy/oracle/*/.env.example` ainda descreve lojas por subdomínio** (`Security__StorefrontBaseDomain`, `*.lojas.example.com`, origens por loja) e não tem `DropQueue__PurchaseIdentityKey` (sem ela a fila responde 503), `Security__StorefrontBaseUrl`, `Security__StorefrontApiBaseUrl`, `MercadoPago__*`, `MelhorEnvio__*` nem `PlatformBilling__*`. Os valores para o domínio escolhido estão em `deploy/README.md` do front.
+- **Domínio próprio (task 41)** não funciona com a loja no caminho: o domínio da marca não tem caminho de loja e o cookie `SameSite=Strict` não vai entre `minhamarca.com.br` e `www.drpcommerce.com.br`. Deixar a aba Domínios para depois.

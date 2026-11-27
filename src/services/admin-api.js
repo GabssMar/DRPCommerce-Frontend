@@ -1,4 +1,4 @@
-import { DROP_BASE, STORE_BASE, storefrontPath } from './config';
+import { DROP_BASE, STORE_BASE, STORE_SLUG, normalizeSlug, storefrontPath } from './config';
 import { request } from './http';
 import { searchQuery, toPage } from './paging';
 import { crud } from './resources';
@@ -236,8 +236,14 @@ export const listMyEnterprises = () => request('GET', store('enterprises/mine'),
 export const registerEnterprise = (payload) => request('POST', store('enterprises/register'), opts(payload));
 export const updateEnterprise = (payload) => request('PUT', store('enterprises/current'), opts(payload));
 // Dados públicos da loja (nome, e-mail, telefone): o back não tem GET completo da empresa.
-// Rota do storefront: a loja vem do slug do endereço (STORE_SLUG), não do token.
-export const getPublicStore = () => request('GET', storefrontPath(STORE_BASE, 'store'), { realm: null });
+// Rota do storefront, pelo slug da loja. Sem slug conhecido devolve null.
+export const getPublicStore = (slug = STORE_SLUG) =>
+  (slug ? request('GET', storefrontPath(STORE_BASE, 'store', slug), { realm: null }) : Promise.resolve(null));
+
+// Slug público da loja do painel. O painel mora na raiz do site (sem slug no caminho):
+// usa `storefrontSlug` de enterprises/mine quando o back devolver (pendência registrada);
+// senão, o slug do endereço, quando o painel foi aberto de dentro da loja.
+export const storefrontSlugOf = (choice) => normalizeSlug(choice?.storefrontSlug) || STORE_SLUG;
 
 // ------------------------------------------------------------ INTEGRAÇÕES ---
 // Task 43. Rotas do Store (MercadoPagoController, MelhorEnvioController,

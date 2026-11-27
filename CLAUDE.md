@@ -42,7 +42,7 @@ Commits seguem Conventional Commits (validado por commitlint + husky).
 
 ```
 src/
-├── main.js               entrada: Design System, initTheme(), restaura sessão (modo http), monta o App
+├── main.js               entrada: endereços de retorno (services/entry-url.js), Design System, initTheme(), restaura sessão (modo http), monta o App
 ├── router.js             rotas por hash (#/conta, #/admin/pedidos…), sem Vue Router
 ├── App.vue               shell da loja; #/admin/* monta components/admin/AdminApp.vue
 ├── components/
@@ -57,7 +57,11 @@ src/
     ├── http.js · auth.js · resources.js · client-api.js · admin-api.js · admin-catalog-api.js · team-api.js · status.js · sales.js
     └── mock/             seed + servidor falso nas MESMAS rotas do back (VITE_API_MODE=mock)
 design-system/            o Design System (docs + CSS + tokens)
+deploy/                   imagem Docker (nginx), compose e guia de publicação na Oracle
 ```
+
+Endereços: plataforma e painel em `/` (`#/admin`), cada loja em `/nome-da-loja/` (o slug é o
+primeiro segmento do caminho, `services/config.js`). Sem slug, não há telas de cliente.
 
 Telas do design e rotas do back-end: `design-system/migration/tasks/TELAS-DESIGN.md`.
 Nenhum componente chama `fetch`: tudo passa por `src/services/`.

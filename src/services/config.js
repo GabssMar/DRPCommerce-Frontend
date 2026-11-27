@@ -30,23 +30,36 @@ export const MOCK_HINTS = IS_MOCK
 export const DROP_BASE = env.VITE_DROP_API_BASE_URL || '/api/drop/api';
 export const STORE_BASE = env.VITE_STORE_API_BASE_URL || '/api/store/api';
 
-// Loja do cliente. O back identifica a loja pelo slug no caminho:
+// Loja do cliente. Cada loja mora num caminho do site: https://www.drpcommerce.com.br/nome-da-loja/
+// (StorefrontPorLoja.md no back), e as rotas da loja usam o mesmo slug:
 // /api/store/api/storefront/{slug}/products, /api/drop/api/storefront/{slug}/drop/events...
-// Ordem: VITE_STORE_SLUG; senão, a primeira parte do endereço do site
-// (teste.stores.localhost -> "teste"); no mock, a loja de exemplo.
+// Ordem: VITE_STORE_SLUG (fixa uma loja no dev); senão, o primeiro segmento do caminho;
+// no mock, a loja de exemplo. Sem slug, o site é a plataforma (apresentação, planos e painel).
 export const MOCK_STORE_SLUG = IS_MOCK ? 'veloce-labs' : '';
 
-const subdomainSlug = () => {
-  const host = globalThis.location?.hostname ?? '';
-  const labels = host.split('.');
-  if (labels.length < 2 || /^\d+$/.test(labels.at(-1)) || labels[0] === 'www') return '';
-  return labels[0];
+// Mesma regra do back (StorefrontSlug.Normalize): 3 a 63 caracteres, letras minúsculas,
+// números e hífen, sem hífen nas pontas. Os nomes reservados nunca são loja.
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+const RESERVED_SLUGS = new Set(['www', 'api', 'admin', 'backoffice', 'mail', 'internal', 'swagger', 'openapi']);
+export const normalizeSlug = (value) => {
+  const slug = String(value ?? '').trim().toLowerCase();
+  return SLUG_PATTERN.test(slug) && !RESERVED_SLUGS.has(slug) ? slug : '';
 };
 
-export const STORE_SLUG = (env.VITE_STORE_SLUG || subdomainSlug() || MOCK_STORE_SLUG).trim().toLowerCase();
+const pathSlug = () => {
+  const [first] = (globalThis.location?.pathname ?? '/').split('/').filter(Boolean);
+  return normalizeSlug(first ? decodeURIComponent(first) : '');
+};
+
+export const STORE_SLUG = normalizeSlug(env.VITE_STORE_SLUG) || pathSlug() || MOCK_STORE_SLUG;
+// A página está dentro de uma loja (cliente compra, entra e acompanha pedidos).
+export const HAS_STORE = Boolean(STORE_SLUG);
+
+// Endereço público da loja: /nome-da-loja/ (o hash da rota vem depois).
+export const storeHomePath = (slug = STORE_SLUG) => (slug ? `/${encodeURIComponent(slug)}/` : '/');
 
 // storefrontPath(STORE_BASE, 'products') -> /api/store/api/storefront/{slug}/products
-export const storefrontPath = (base, path) => `${base}/storefront/${encodeURIComponent(STORE_SLUG)}/${path}`;
+export const storefrontPath = (base, path, slug = STORE_SLUG) => `${base}/storefront/${encodeURIComponent(slug)}/${path}`;
 
 export const REQUEST_TIMEOUT_MS = 15000;
 export const MOCK_LATENCY_MS = 280;
