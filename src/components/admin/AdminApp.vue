@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import {
   BadgeDollarSign, LayoutDashboard, LogOut, Package, Plug, Radio, Receipt, Rocket, Settings, ShieldAlert, Users, Wallet,
 } from '@lucide/vue';
@@ -14,24 +14,26 @@ import AdminLogin from './AdminLogin.vue';
 import AdminEnterpriseChoice from './AdminEnterpriseChoice.vue';
 import AdminInviteAccept from './AdminInviteAccept.vue';
 import RequestLog from './RequestLog.vue';
-import AdminDashboard from './AdminDashboard.vue';
-import AdminDrops from './AdminDrops.vue';
-import AdminDropEditor from './AdminDropEditor.vue';
-import AdminEngagement from './AdminEngagement.vue';
-import AdminLive from './AdminLive.vue';
-import AdminOrders from './AdminOrders.vue';
-import AdminFinance from './AdminFinance.vue';
-import AdminCatalog from './AdminCatalog.vue';
-import AdminProductEditor from './AdminProductEditor.vue';
-import AdminCategories from './AdminCategories.vue';
-import AdminCoupons from './AdminCoupons.vue';
-import AdminSuppliers from './AdminSuppliers.vue';
-import AdminCustomers from './AdminCustomers.vue';
-import AdminFraud from './AdminFraud.vue';
-import AdminSettings from './AdminSettings.vue';
-import AdminPlan from './AdminPlan.vue';
-import AdminIntegrations from './AdminIntegrations.vue';
-import PlanSignup from '../plans/PlanSignup.vue';
+
+// Cada tela do painel é um pedaço separado do build, baixado só quando é aberta.
+const AdminDashboard = defineAsyncComponent(() => import('./AdminDashboard.vue'));
+const AdminDrops = defineAsyncComponent(() => import('./AdminDrops.vue'));
+const AdminDropEditor = defineAsyncComponent(() => import('./AdminDropEditor.vue'));
+const AdminEngagement = defineAsyncComponent(() => import('./AdminEngagement.vue'));
+const AdminLive = defineAsyncComponent(() => import('./AdminLive.vue'));
+const AdminOrders = defineAsyncComponent(() => import('./AdminOrders.vue'));
+const AdminFinance = defineAsyncComponent(() => import('./AdminFinance.vue'));
+const AdminCatalog = defineAsyncComponent(() => import('./AdminCatalog.vue'));
+const AdminProductEditor = defineAsyncComponent(() => import('./AdminProductEditor.vue'));
+const AdminCategories = defineAsyncComponent(() => import('./AdminCategories.vue'));
+const AdminCoupons = defineAsyncComponent(() => import('./AdminCoupons.vue'));
+const AdminSuppliers = defineAsyncComponent(() => import('./AdminSuppliers.vue'));
+const AdminCustomers = defineAsyncComponent(() => import('./AdminCustomers.vue'));
+const AdminFraud = defineAsyncComponent(() => import('./AdminFraud.vue'));
+const AdminSettings = defineAsyncComponent(() => import('./AdminSettings.vue'));
+const AdminPlan = defineAsyncComponent(() => import('./AdminPlan.vue'));
+const AdminIntegrations = defineAsyncComponent(() => import('./AdminIntegrations.vue'));
+const PlanSignup = defineAsyncComponent(() => import('../plans/PlanSignup.vue'));
 
 // Shell do painel da loja (patterns/app-shell.md): rail com os módulos,
 // topbar com o ambiente e a pessoa logada, e a tela da rota. Módulo sem a
