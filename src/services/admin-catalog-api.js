@@ -60,3 +60,26 @@ export const updateVariantDimensions = (productId, id, { weight, height, width, 
   request('PUT', variants(productId, `/${id}/dimensions`), opts({ weight, height, width, length }));
 
 export const deleteVariant = (productId, id) => request('DELETE', variants(productId, `/${id}`), opts());
+
+// ------------------------------------------------------------- ESTOQUE ---
+
+// Task 34 (inventory.manage). O saldo é do SKU: a rota devolve a variante, com
+// stockQuantity, reservedQuantity, availableQuantity e version.
+export const getStock = (variantId) => request('GET', store(`inventory/variants/${variantId}`), opts());
+
+// quantityChange ≠ 0 (entrada positiva, saída negativa). expectedVersion evita
+// sobrescrever um saldo que mudou: 409 Inventory.StaleVersion. A mesma
+// idempotencyKey repetida devolve a movimentação original.
+export const adjustStock = (variantId, { quantityChange, reason, idempotencyKey, expectedVersion }) =>
+  request('PUT', store(`inventory/variants/${variantId}/adjust`), opts({ quantityChange, reason, idempotencyKey, expectedVersion }));
+
+export const listMovements = async (filters) =>
+  toPage(await request('GET', store(`inventory/movements${searchQuery(filters)}`), opts()));
+
+// Reservas avulsas: o back não lista; guarde o id devolvido.
+export const createReservation = ({ idempotencyKey, reference, items }) =>
+  request('POST', store('inventory/reservations'), opts({ idempotencyKey, reference, items }));
+export const getReservation = (id) => request('GET', store(`inventory/reservations/${id}`), opts());
+// Reserva de pedido: 409 Inventory.OrderReservationProtected.
+export const releaseReservation = (id) => request('PUT', store(`inventory/reservations/${id}/release`), opts());
+export const commitReservation = (id) => request('PUT', store(`inventory/reservations/${id}/commit`), opts());

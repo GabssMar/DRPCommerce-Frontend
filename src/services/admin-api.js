@@ -203,12 +203,6 @@ export const issueInvoice = (order, sequence) =>
     issuedAt: null,
   });
 
-// -------------------------------------------------------------- CATÁLOGO ---
-
-// Task 19: o back-end ainda não tem estoque em Product. Rota planejada.
-export const adjustStock = ({ productId, delta, reason }) =>
-  request('POST', store('products/adjust-stock'), opts({ productId, delta, reason }));
-
 // ------------------------------------------------------------- AUDITORIA ---
 
 export const writeAudit = async ({ eventId, customerId = null, action, entityName, entityId, oldValues, newValues }) => {

@@ -13,6 +13,7 @@ import { fieldMessage } from '../../services/api-error';
 import { brl } from '../../services/format';
 import LoadState from '../ui/LoadState.vue';
 import AdminProductVariants from './AdminProductVariants.vue';
+import AdminProductStock from './AdminProductStock.vue';
 
 // E7 · Editor de produto (task 33), uma aba por seção, cada uma com o seu salvar
 // e a sua permissão. #/admin/catalogo/produtos/novo cria; /:id/:tab edita.
@@ -26,14 +27,16 @@ const TABS = [
   { id: 'dimensoes', label: 'Dimensões' },
   { id: 'categoria', label: 'Categoria' },
   { id: 'variantes', label: 'Variantes' },
+  { id: 'estoque', label: 'Estoque' },
 ];
 const CONFLICTS = { 'Product.DuplicateSlug': 'slug', 'Product.DuplicateSku': 'sku' };
 
 const isNew = computed(() => props.params.id === 'novo');
 const productId = computed(() => Number(props.params.id));
-// Produto transferido para o Drop (task 44): selo e aviso, sem ativar pela vitrine.
+// Produto no Drop não tem aba de estoque: o saldo é do catálogo do Drop (task 44).
 const inDrop = computed(() => Boolean(product.data.value?.isTransferredToDrop));
-const tab = computed(() => TABS.find((t) => t.id === props.params.tab)?.id ?? 'detalhes');
+const tabs = computed(() => (inDrop.value ? TABS.filter((t) => t.id !== 'estoque') : TABS));
+const tab = computed(() => tabs.value.find((t) => t.id === props.params.tab)?.id ?? 'detalhes');
 const tabHref = (id) => href(`/admin/catalogo/produtos/${props.params.id}/${id}`);
 
 const product = useAsync(() => (isNew.value ? null : getProduct(productId.value)));
@@ -392,7 +395,7 @@ const saved = (action) => action.done.value && !action.error.value;
       aria-label="Seções do produto"
     >
       <a
-        v-for="t in TABS"
+        v-for="t in tabs"
         :key="t.id"
         class="ds-nav__item"
         :href="tabHref(t.id)"
@@ -811,6 +814,13 @@ const saved = (action) => action.done.value && !action.error.value;
 
     <!-- Variantes -->
     <AdminProductVariants
+      v-else-if="tab === 'variantes'"
+      :product="p"
+      @updated="product.reload"
+    />
+
+    <!-- Estoque -->
+    <AdminProductStock
       v-else
       :product="p"
       @updated="product.reload"

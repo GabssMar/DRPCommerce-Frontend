@@ -736,6 +736,97 @@ function catalogRoutes(method, path, body, query) {
   return null;
 }
 
+// ------------------------------------------------------- ESTOQUE (task 34) ---
+
+const OPERATION_TYPES = { adjustment: 'Adjustment', reservation: 'Reservation', release: 'Release', commit: 'Commit' };
+
+function inventoryRoutes(method, path, body, query) {
+  const d = data();
+  d['store/stock-movements'] ??= [];
+  d['store/stock-reservations'] ??= [];
+  const movements = d['store/stock-movements'];
+  const reservations = d['store/stock-reservations'];
+  const variantOf = (id) => d['store/product-variants'].find((v) => v.id === Number(id));
+  const productOf = (v) => d['store/products'].find((p) => p.id === v.productId);
+  const stockOf = (v) => variantResponse(productOf(v), v);
+  const log = (v, type, key, quantityChange, reservedChange, reason, reservationId = null) => {
+    const movement = {
+      id: nextIdOf(movements), productVariantId: v.id, stockReservationId: reservationId, sku: v.sku, type, operationKey: key,
+      quantityChange, reservedChange, stockAfter: v.stockQuantity, reservedAfter: v.reservedQuantity, reason, actorUserId: 1, occurredAt: nowIso(),
+    };
+    movements.push(movement);
+    return movement;
+  };
+
+  const stockMatch = path.match(/^inventory\/variants\/(\d+)(\/adjust)?$/);
+  if (stockMatch) {
+    const v = variantOf(stockMatch[1]);
+    if (!v) return problem(404, 'ProductVariant.NotFound', 'Variante não encontrada.');
+    if (!stockMatch[2]) return method === 'GET' ? ok(stockOf(v)) : null;
+    const { quantityChange, reason, idempotencyKey, expectedVersion } = body;
+    const previous = movements.find((m) => m.operationKey === idempotencyKey);
+    if (previous) {
+      return previous.quantityChange === quantityChange && previous.reason === reason
+        ? ok(previous)
+        : problem(409, 'Inventory.IdempotencyConflict', 'A chave já foi usada em outro ajuste.');
+    }
+    if (!stockOf(v).tracksStock) return problem(400, 'Inventory.UntrackedSku', 'Este SKU não controla estoque.');
+    if (expectedVersion && expectedVersion !== v.version) return problem(409, 'Inventory.StaleVersion', 'O saldo mudou desde a leitura.');
+    if (v.stockQuantity + quantityChange < v.reservedQuantity) {
+      return problem(409, 'Inventory.InvalidAdjustment', 'O ajuste deixaria o saldo abaixo do reservado.');
+    }
+    v.stockQuantity += quantityChange;
+    v.version += 1;
+    return ok(log(v, OPERATION_TYPES.adjustment, idempotencyKey, quantityChange, 0, reason));
+  }
+
+  if (path === 'inventory/movements' && method === 'GET') {
+    const variantId = Number(query.get('ProductVariantId')) || null;
+    const rows = movements.filter((m) => !variantId || m.productVariantId === variantId).sort((a, b) => b.id - a.id);
+    const page = Number(query.get('Page') ?? 1);
+    const pageSize = Number(query.get('PageSize') ?? 20);
+    return ok({ items: rows.slice((page - 1) * pageSize, page * pageSize), totalCount: rows.length, page, pageSize });
+  }
+
+  const reservationResponse = (r) => ({ ...r, items: r.items.map((i) => ({ ...i, allowsBackorder: false })) });
+  if (path === 'inventory/reservations' && method === 'POST') {
+    const found = reservations.find((r) => r.idempotencyKey === body.idempotencyKey);
+    if (found) return ok(reservationResponse(found));
+    const lines = body.items ?? [];
+    for (const line of lines) {
+      const v = variantOf(line.productVariantId);
+      if (!v) return problem(404, 'ProductVariant.NotFound', 'Variante não encontrada.');
+      if (stockOf(v).availableQuantity < line.quantity) return problem(409, 'Inventory.InsufficientStock', 'Saldo insuficiente.');
+    }
+    const r = {
+      id: nextIdOf(reservations), idempotencyKey: body.idempotencyKey, reference: body.reference ?? '', status: 'Reserved',
+      expiresAt: hoursFromNow(1), completedAt: null, items: lines.map((l) => ({ productVariantId: l.productVariantId, quantity: l.quantity })),
+    };
+    r.items.forEach((i) => { variantOf(i.productVariantId).reservedQuantity += i.quantity; });
+    reservations.push(r);
+    r.items.forEach((i) => log(variantOf(i.productVariantId), OPERATION_TYPES.reservation, `${r.idempotencyKey}:${i.productVariantId}`, 0, i.quantity, r.reference, r.id));
+    return ok(reservationResponse(r));
+  }
+  const reservationMatch = path.match(/^inventory\/reservations\/(\d+)(?:\/(release|commit))?$/);
+  if (reservationMatch) {
+    const r = reservations.find((x) => x.id === Number(reservationMatch[1]));
+    if (!r) return problem(404, 'Inventory.ReservationNotFound', 'Reserva não encontrada.');
+    const action = reservationMatch[2];
+    if (!action) return ok(reservationResponse(r));
+    if (r.status !== 'Reserved') return problem(409, 'Inventory.ReservationClosed', 'A reserva já foi encerrada.');
+    r.status = action === 'release' ? 'Released' : 'Committed';
+    r.completedAt = nowIso();
+    r.items.forEach((i) => {
+      const v = variantOf(i.productVariantId);
+      v.reservedQuantity -= i.quantity;
+      if (action === 'commit') v.stockQuantity -= i.quantity;
+      log(v, OPERATION_TYPES[action], `${r.idempotencyKey}:${action}:${v.id}`, action === 'commit' ? -i.quantity : 0, -i.quantity, r.reference, r.id);
+    });
+    return ok(reservationResponse(r));
+  }
+  return null;
+}
+
 function storeBackoffice(method, path, body, who, query) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
@@ -830,16 +921,9 @@ function storeBackoffice(method, path, body, who, query) {
   if (team) return team;
   const catalog = catalogRoutes(method, path, body, query);
   if (catalog) return catalog;
+  const inventory = inventoryRoutes(method, path, body, query);
+  if (inventory) return inventory;
 
-  // Task 19 (ainda não existe no back-end): movimentação de estoque.
-  if (path === 'products/adjust-stock' && method === 'POST') {
-    const p = d['store/products'].find((x) => x.id === Number(body?.productId));
-    if (!p) return problem(404, 'Product.NotFound', 'Produto não encontrado.');
-    const next = p.stockQuantity + Number(body.delta);
-    if (next < 0) return problem(409, 'Stock.Insufficient', 'O ajuste deixaria o estoque negativo.');
-    p.stockQuantity = next;
-    return ok({ productId: p.id, stockQuantity: p.stockQuantity, stockReserved: p.stockReserved });
-  }
   return null;
 }
 
