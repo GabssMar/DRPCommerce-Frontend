@@ -827,6 +827,89 @@ function inventoryRoutes(method, path, body, query) {
   return null;
 }
 
+// -------------------------------------------------------- CATEGORIAS (task 35) ---
+
+const MAX_CATEGORY_DEPTH = 3;
+const categorySlug = (name) => name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+function categoryRoutes(method, path, body) {
+  const d = data();
+  const live = () => d['store/categories'].filter((c) => !c.isDeleted);
+  const childrenOf = (id) => live().filter((c) => c.parentCategoryId === id);
+  const subtreeIds = (id) => [id, ...childrenOf(id).flatMap((c) => subtreeIds(c.id))];
+  const depthOf = (c) => (c.parentCategoryId ? 1 + depthOf(live().find((x) => x.id === c.parentCategoryId)) : 1);
+  const sorted = (rows) => rows.sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name) || a.id - b.id);
+  const node = (c) => ({
+    id: c.id, parentCategoryId: c.parentCategoryId, name: c.name, slug: c.slug, description: c.description, imageUrl: c.imageUrl,
+    displayOrder: c.displayOrder, isActive: c.isActive, children: sorted(childrenOf(c.id)).map(node),
+  });
+  const validParent = (c, parentId) => {
+    if (!parentId) return null;
+    const parent = live().find((x) => x.id === parentId);
+    if (!parent || (c?.id && subtreeIds(c.id).includes(parentId))) return problem(400, 'Category.Cycle', 'A categoria-mãe criaria um ciclo.');
+    if (depthOf(parent) >= MAX_CATEGORY_DEPTH) return problem(400, 'Category.MaximumDepth', 'A árvore aceita até 3 níveis.');
+    return null;
+  };
+
+  if (path === 'categories/tree' && method === 'GET') return ok(sorted(live().filter((c) => !c.parentCategoryId)).map(node));
+
+  if (path === 'categories/add' && method === 'POST') {
+    const error = validParent(null, body.parentCategoryId);
+    if (error) return error;
+    const slug = body.slug?.trim() || categorySlug(body.name);
+    if (live().some((c) => c.slug === slug)) return problem(409, 'Category.DuplicateSlug', 'Já existe uma categoria com este slug.');
+    const c = { ...body, slug, id: nextIdOf(d['store/categories']), enterpriseId: 1, isDeleted: false, deletedAt: null, createdAt: nowIso(), updatedAt: null };
+    d['store/categories'].push(c);
+    return ok([c]);
+  }
+  if (path === 'categories/update' && method === 'PUT') {
+    const c = live().find((x) => x.id === body.id);
+    if (!c) return problem(404, 'Category.NotFound', 'Categoria não encontrada.');
+    const error = validParent(c, body.parentCategoryId);
+    if (error) return error;
+    const slug = body.slug?.trim() || categorySlug(body.name);
+    if (live().some((x) => x.id !== c.id && x.slug === slug)) return problem(409, 'Category.DuplicateSlug', 'Já existe uma categoria com este slug.');
+    Object.assign(c, body, { slug, updatedAt: nowIso() });
+    return ok([c]);
+  }
+
+  const activeMatch = path.match(/^categories\/(\d+)\/active$/);
+  if (activeMatch && method === 'PUT') {
+    const c = live().find((x) => x.id === Number(activeMatch[1]));
+    if (!c) return problem(404, 'Category.NotFound', 'Categoria não encontrada.');
+    c.isActive = Boolean(body.isActive);
+    return ok(c);
+  }
+
+  if (path === 'categories/reorder' && method === 'PUT') {
+    const ids = body.items.map((i) => i.id);
+    if (new Set(ids).size !== ids.length) return problem(400, 'Category.DuplicateIds', 'Há categorias repetidas.');
+    if (ids.some((id) => !live().some((c) => c.id === id))) return problem(404, 'Category.NotFound', 'Categoria não encontrada.');
+    body.items.forEach((i) => { live().find((c) => c.id === i.id).displayOrder = i.displayOrder; });
+    return ok(true);
+  }
+
+  if (path === 'categories/delete-with-products' && method === 'DELETE') {
+    const set = new Set(body.ids);
+    if (set.size !== body.ids.length) return problem(400, 'Category.DuplicateIds', 'Há categorias repetidas.');
+    const targets = live().filter((c) => set.has(c.id));
+    if (targets.length !== set.size) return problem(404, 'Category.NotFound', 'Categoria não encontrada.');
+    if (targets.some((c) => childrenOf(c.id).some((x) => !set.has(x.id)))) {
+      return problem(409, 'Category.HasChildren', 'A categoria tem subcategorias fora da seleção.');
+    }
+    const products = d['store/products'].filter((p) => !p.isDeleted && set.has(p.categoryId));
+    const destination = live().find((c) => c.id === body.moveProductsToCategoryId);
+    if (products.length && !body.moveProductsToCategoryId) return problem(409, 'Category.HasProducts', 'A categoria tem produtos: escolha o destino.');
+    if (products.length && (!destination || !destination.isActive || set.has(destination.id))) {
+      return problem(400, 'Category.InvalidDestination', 'O destino precisa ser uma categoria ativa fora da seleção.');
+    }
+    products.forEach((p) => { p.categoryId = destination.id; });
+    targets.forEach((c) => { c.isDeleted = true; c.deletedAt = nowIso(); });
+    return ok(true);
+  }
+  return null;
+}
+
 function storeBackoffice(method, path, body, who, query) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
@@ -923,6 +1006,8 @@ function storeBackoffice(method, path, body, who, query) {
   if (catalog) return catalog;
   const inventory = inventoryRoutes(method, path, body, query);
   if (inventory) return inventory;
+  const categories = categoryRoutes(method, path, body);
+  if (categories) return categories;
 
   return null;
 }

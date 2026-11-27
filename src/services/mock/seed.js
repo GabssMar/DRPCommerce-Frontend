@@ -113,6 +113,11 @@ export function createSeed(now = Date.now()) {
     description: '', imageUrl: '', displayOrder: i + 1, isActive: true, isDeleted: false, deletedAt: null,
     ...base(now - 300 * DAY),
   }));
+  db['store/categories'].push(...[[5, 'Cano alto', 1], [6, 'Cano baixo', 1]].map(([id, name, parentCategoryId], i) => ({
+    id, enterpriseId: ENTERPRISE_ID, parentCategoryId, name, slug: slugify(name),
+    description: '', imageUrl: '', displayOrder: i + 1, isActive: true, isDeleted: false, deletedAt: null,
+    ...base(now - 300 * DAY),
+  })));
 
   const supplier = (id, companyName, contactName, email, phone, city, stateId, isActive) => ({
     id, enterpriseId: ENTERPRISE_ID, companyName, contactName,

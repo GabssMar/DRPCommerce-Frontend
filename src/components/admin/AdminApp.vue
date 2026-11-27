@@ -23,6 +23,7 @@ import AdminOrders from './AdminOrders.vue';
 import AdminFinance from './AdminFinance.vue';
 import AdminCatalog from './AdminCatalog.vue';
 import AdminProductEditor from './AdminProductEditor.vue';
+import AdminCategories from './AdminCategories.vue';
 import AdminCoupons from './AdminCoupons.vue';
 import AdminSuppliers from './AdminSuppliers.vue';
 import AdminCustomers from './AdminCustomers.vue';
@@ -41,7 +42,7 @@ const SECTIONS = [
   { label: 'Drops', path: '/admin/drops', icon: Rocket, routes: ['admin-drops', 'admin-drop', 'admin-drop-new', 'admin-drop-tab'], permission: 'drop.events.view' },
   { label: 'Drop ao vivo', path: '/admin/ao-vivo', icon: Radio, routes: ['admin-live'], permission: 'drop.events.view' },
   { label: 'Pedidos', path: '/admin/pedidos', icon: Receipt, routes: ['admin-orders'], permission: 'orders.view' },
-  { label: 'Catálogo', path: '/admin/catalogo', icon: Package, routes: ['admin-catalog', 'admin-product', 'admin-coupons', 'admin-suppliers'], permission: ['products.view', 'categories.view', 'coupons.view', 'suppliers.manage'] },
+  { label: 'Catálogo', path: '/admin/catalogo', icon: Package, routes: ['admin-catalog', 'admin-categories', 'admin-product', 'admin-coupons', 'admin-suppliers'], permission: ['products.view', 'categories.view', 'coupons.view', 'suppliers.manage'] },
   { label: 'Fraude', path: '/admin/fraude', icon: ShieldAlert, routes: ['admin-fraud'], ownerOnly: true },
   { label: 'Financeiro', path: '/admin/financeiro', icon: Wallet, routes: ['admin-finance'], ownerOnly: true },
   { label: 'Clientes', path: '/admin/clientes', icon: Users, routes: ['admin-customers'], permission: 'customers.view' },
@@ -65,6 +66,7 @@ const PAGES = {
   'admin-finance': AdminFinance,
   'admin-catalog': AdminCatalog,
   'admin-product': AdminProductEditor,
+  'admin-categories': AdminCategories,
   'admin-coupons': AdminCoupons,
   'admin-suppliers': AdminSuppliers,
   'admin-customers': AdminCustomers,

@@ -83,3 +83,24 @@ export const getReservation = (id) => request('GET', store(`inventory/reservatio
 // Reserva de pedido: 409 Inventory.OrderReservationProtected.
 export const releaseReservation = (id) => request('PUT', store(`inventory/reservations/${id}/release`), opts());
 export const commitReservation = (id) => request('PUT', store(`inventory/reservations/${id}/commit`), opts());
+
+// ---------------------------------------------------------- CATEGORIAS ---
+
+// Task 35. Até 3 níveis, em ordem de exibição; inclui as inativas.
+// { id, parentCategoryId, name, slug, description, imageUrl, displayOrder, isActive, children }
+export const getCategoryTree = () => request('GET', store('categories/tree'), opts());
+
+// O add e o update devolvem lista com a categoria. Slug vazio: o back gera a partir do nome.
+export const createCategory = async (category) => (await request('POST', store('categories/add'), opts(category)))[0];
+export const updateCategory = async (category) => (await request('PUT', store('categories/update'), opts(category)))[0];
+
+// Os filhos não mudam: desativar um pai some com o ramo da vitrine.
+export const setCategoryActive = (id, isActive) => request('PUT', store(`categories/${id}/active`), opts({ isActive }));
+
+// Ordem dos irmãos numa chamada só: [{ id, displayOrder }].
+export const reorderCategories = (items) => request('PUT', store('categories/reorder'), opts({ items }));
+
+// Exclui o conjunto (a categoria e as subcategorias) e passa os produtos para uma
+// categoria ativa de fora dele. Sem destino e com produtos: 409 Category.HasProducts.
+export const deleteCategories = (ids, moveProductsToCategoryId = null) =>
+  request('DELETE', store('categories/delete-with-products'), opts({ ids, moveProductsToCategoryId }));

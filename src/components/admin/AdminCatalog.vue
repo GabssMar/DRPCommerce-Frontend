@@ -1,21 +1,19 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { Package, Plus } from '@lucide/vue';
-import { useAsync, useAction } from '../../composables/useAsync';
+import { useAsync } from '../../composables/useAsync';
 import { usePagedSearch } from '../../composables/usePagedSearch';
 import { usePermissions } from '../../composables/usePermissions';
-import { href, navigate, route } from '../../router';
+import { href, navigate } from '../../router';
 import { admin } from '../../services/admin-api';
 import { searchProducts } from '../../services/admin-catalog-api';
 import { brl, formatNumber } from '../../services/format';
-import { currentEnterpriseId } from '../../services/session';
 import CatalogTabs from './CatalogTabs.vue';
 import LoadState from '../ui/LoadState.vue';
-import ModalDialog from '../ui/ModalDialog.vue';
 import PaginationNav from '../ui/PaginationNav.vue';
 
 // E7 · Catálogo (task 33): busca paginada no back (GET products/search). A edição
-// fica em #/admin/catalogo/produtos/:id. Categorias: categories get-all/add/update.
+// fica em #/admin/catalogo/produtos/:id.
 defineProps({ params: { type: Object, default: () => ({}) } });
 
 const { can, denied } = usePermissions();
@@ -52,25 +50,6 @@ const situation = (p) => {
 const skuOf = (p) => (p.hasVariants ? `${p.variants.filter((v) => !v.isDefault).length} SKUs` : p.sku);
 
 const openProduct = (id) => navigate(`/admin/catalogo/produtos/${id}`);
-
-// ------------------------------------------------------------- categorias ---
-const slugify = (text) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-const showCategories = computed(() => route.value.path === '/admin/catalogo/categorias');
-const closeCategories = () => navigate('/admin/catalogo');
-const newCategory = ref('');
-const addCategory = useAction(async () => {
-  const name = newCategory.value.trim();
-  await admin.categories.add({
-    enterpriseId: currentEnterpriseId(), parentCategoryId: null, name, slug: slugify(name), description: '', imageUrl: '',
-    displayOrder: categories.value.length + 1, isActive: true,
-  });
-  newCategory.value = '';
-  await lookups.reload();
-});
-const toggleCategory = useAction(async (c) => {
-  await admin.categories.patch(c, { isActive: !c.isActive });
-  await lookups.reload();
-});
 </script>
 
 <template>
@@ -330,62 +309,4 @@ const toggleCategory = useAction(async (c) => {
       </div>
     </LoadState>
   </div>
-
-  <!-- Categorias -->
-  <ModalDialog
-    v-if="showCategories"
-    title="Categorias"
-    @close="closeCategories"
-  >
-    <ul class="ds-stack--1 ds-list-reset">
-      <li
-        v-for="c in categories"
-        :key="c.id"
-        class="ds-row-divided"
-      >
-        <span>{{ c.name }}</span>
-        <span class="ds-cluster ds-cluster--2">
-          <span :class="['ds-badge', c.isActive ? 'ds-badge--success' : 'ds-badge--done']">{{ c.isActive ? 'Ativa' : 'Inativa' }}</span>
-          <button
-            type="button"
-            class="ds-btn ds-btn--ghost ds-btn--sm"
-            :disabled="toggleCategory.isPending.value"
-            @click="toggleCategory.run(c)"
-          >
-            {{ c.isActive ? 'Desativar' : 'Ativar' }}
-          </button>
-        </span>
-      </li>
-    </ul>
-    <form
-      class="ds-input-group"
-      @submit.prevent="addCategory.run()"
-    >
-      <label
-        class="ds-sr-only"
-        for="new-category"
-      >Nova categoria</label>
-      <input
-        id="new-category"
-        v-model="newCategory"
-        class="ds-input"
-        placeholder="Nova categoria"
-        required
-      >
-      <button
-        type="submit"
-        class="ds-btn ds-btn--secondary"
-        :disabled="addCategory.isPending.value"
-      >
-        Adicionar
-      </button>
-    </form>
-    <p
-      v-if="addCategory.error.value || toggleCategory.error.value"
-      class="ds-error"
-      role="alert"
-    >
-      {{ (addCategory.error.value || toggleCategory.error.value).message }}
-    </p>
-  </ModalDialog>
 </template>
