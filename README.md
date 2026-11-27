@@ -111,6 +111,7 @@ As três regras principais:
 | Telas da loja, da conta e do drop | Usar as novas rotas do back-end: carrinho, checkout, estoque, pedidos… |
 | Painel do administrador (com dados de exemplo) | Pagamento (Mercado Pago) e frete (Melhor Envio), que dependem do back-end |
 | Login, cadastro e renovação de sessão | |
+| Sessões ativas e troca de senha; painel com rotas de negócio (equipe e permissões, produtos, estoque, categorias, cupons, pedidos, clientes, vendas, domínios) | |
 
 O planejamento completo, com uma task por funcionalidade, está em [`design-system/migration/tasks/`](./design-system/migration/tasks/README.md). O mapa de qual tela usa qual rota do back-end está em [`CONTRATO-API.md`](./design-system/migration/tasks/CONTRATO-API.md).
 
