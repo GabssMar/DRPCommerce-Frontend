@@ -21,30 +21,53 @@ nenhuma loja pode usá-lo como slug.
 
 ## 1. Imagem
 
+### Pelo GitHub (padrão)
+
+A cada merge na `main`, o workflow `.github/workflows/imagem-front.yml` gera a imagem ARM64
+num runner ARM nativo e publica em `ghcr.io/gabssmar/drpcommerce-frontend` com três tags
+(exemplo de um commit `ef4d352` publicado em 27/11/2026):
+
+| Tag | Uso |
+|---|---|
+| `2026.11.27-ef4d352` (data + commit) | **use esta no `FRONT_IMAGE`**: fixa a versão e facilita voltar atrás |
+| `sha-ef4d352` | mesmo conteúdo, só pelo commit |
+| `latest` | a última da `main` (evite em produção: muda sozinha) |
+
+As tags de cada publicação aparecem no resumo da execução (aba Actions) e na página do
+pacote. Em pull requests o workflow só gera a imagem, para conferir que o build passa.
+Também dá para rodar manualmente em Actions → Imagem do front → Run workflow.
+
+### Na máquina local (sem GitHub)
+
 Na raiz deste repositório, com Docker em Linux containers:
 
 ```bash
-docker buildx build --platform linux/arm64 --load -t drpcommerce/front:oracle-arm64 .
-docker image inspect drpcommerce/front:oracle-arm64 --format '{{.Os}}/{{.Architecture}}'   # linux/arm64
-docker image save -o front-image.tar drpcommerce/front:oracle-arm64
+docker buildx build --platform linux/arm64 --load -t drpcommerce/front:2026.11.27 .
+docker image inspect drpcommerce/front:2026.11.27 --format '{{.Os}}/{{.Architecture}}'   # linux/arm64
+docker image save -o front-image.tar drpcommerce/front:2026.11.27
 ```
 
-O build roda `npm run ds:check` e `npm run build` em modo `http`, com o painel ligado
-(`VITE_ADMIN_ENABLED=true`). As variáveis ficam gravadas na imagem: para mudar, gere de novo.
-Prefira tags versionadas (`drpcommerce/front:2026.11.27`) e atualize `FRONT_IMAGE`.
+Na VM: `docker load -i front-image.tar` e `docker compose up -d --pull never`.
+
+Nos dois casos o build roda `npm run ds:check` e `npm run build` em modo `http`, com o painel
+ligado (`VITE_ADMIN_ENABLED=true`). As variáveis ficam gravadas na imagem: para mudar, gere de novo.
 
 ## 2. Container (VM do Gateway, `10.0.0.7`)
 
-Copie `deploy/compose.yaml`, `deploy/.env.example` e a imagem para a VM:
+Copie `deploy/compose.yaml` e `deploy/.env.example` para a VM:
 
 ```bash
-docker load -i front-image.tar
-cp .env.example .env          # só na primeira instalação
+cp .env.example .env          # só na primeira instalação; ajuste FRONT_IMAGE
 docker compose config --quiet
-docker compose up -d --pull never
+docker compose pull
+docker compose up -d
 docker compose ps             # front healthy
 curl -s http://10.0.0.7:8081/healthz   # ok
 ```
+
+Se o pacote no GHCR estiver privado, faça login uma vez na VM com um token do GitHub
+(classic, só com `read:packages`): `echo TOKEN | docker login ghcr.io -u gabssmar --password-stdin`.
+Com o pacote público (Package settings → Change visibility), não precisa de login.
 
 O container roda sem root, com sistema de arquivos somente leitura, e escuta só no IP
 privado (`10.0.0.7:8081`). A porta não deve ser aberta para a internet.
@@ -133,6 +156,7 @@ mesmo com um cliente.
 
 ## Atualizar
 
-Gere a imagem nova, carregue na VM, ajuste `FRONT_IMAGE` no `.env` e rode
-`docker compose up -d --pull never`. O `index.html` não fica em cache; os arquivos de
-`/assets` têm hash no nome, então a versão nova chega na hora.
+Faça o merge na `main` e espere o workflow terminar. Na VM, troque `FRONT_IMAGE` no `.env`
+pela tag nova (data + commit) e rode `docker compose pull && docker compose up -d`. Para
+voltar atrás, ponha a tag anterior e rode os mesmos comandos. O `index.html` não fica em
+cache; os arquivos de `/assets` têm hash no nome, então a versão nova chega na hora.
