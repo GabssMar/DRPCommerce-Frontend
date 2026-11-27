@@ -97,8 +97,8 @@ frontend/
 
 | `VITE_API_MODE` | Comportamento |
 |---|---|
-| `mock` (padrão) | Sem servidor. As funções de `services/` caem em `mock/server.js`. Login do cliente: `camila.duarte@exemplo.com` + qualquer senha. Login do lojista: qualquer e-mail e senha. Os dois começam deslogados e as sessões de exemplo sobrevivem ao F5 (`sessionStorage`). O painel mostra as requisições que **seriam** enviadas |
-| `http` | Chama o Gateway (`https://localhost:5000`) pelo proxy do Vite. Abra o front em **http://teste.stores.localhost:5173** (a loja é identificada pelo subdomínio) |
+| `http` (padrão) | Chama o Gateway (`https://localhost:5000`) pelo proxy do Vite. Abra o front em **http://teste.stores.localhost:5173** (a loja é identificada pelo subdomínio). É o único modo do build de produção |
+| `mock` | Só em `npm run dev` (o build recusa). Sem servidor. As funções de `services/` caem em `mock/server.js`. Login do cliente: `camila.duarte@exemplo.com` + qualquer senha. Login do lojista: qualquer e-mail e senha. Os dois começam deslogados e as sessões de exemplo sobrevivem ao F5 (`sessionStorage`). O painel mostra as requisições que **seriam** enviadas |
 
 ---
 

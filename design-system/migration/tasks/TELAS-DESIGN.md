@@ -8,7 +8,8 @@ front chama e do que ainda falta do lado do servidor.
 ## Como rodar
 
 ```bash
-npm run dev                 # VITE_API_MODE=mock (padrão): tudo funciona sem servidor
+npm run dev                 # back-end real pelo Gateway (VITE_API_MODE=http, padrão)
+VITE_API_MODE=mock npm run dev   # dados de exemplo, sem servidor (só em dev)
 # loja:   http://localhost:5173/#/drops/1/inscricao · #/conta · #/conta/pedidos
 # painel: http://localhost:5173/#/admin/dashboard  (só em dev ou com VITE_ADMIN_ENABLED=true)
 ```

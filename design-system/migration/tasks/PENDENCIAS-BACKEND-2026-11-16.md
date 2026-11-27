@@ -128,7 +128,7 @@ Unidade das dimensões: o front usa **cm** e o peso em **kg**. Confirmar se é a
 - **Histórico sem nome do autor**: só `actorId` e `source` (numérico). A tela mostra "Painel · usuário #id".
 - **Erros de validação do envio** voltam como `ShipOrderCommand.Request.CarrierName` etc.; a tela mostra a primeira mensagem do campo.
 - **Pedido de Drop continua no CRUD do Drop** (sem rotas de ciclo); a aba Drop de Pedidos mantém o fluxo atual.
-- **Financeiro**: o reembolso e a emissão de nota da vitrine saíram da tela (o estorno é o cancelamento do pedido e `Invoice` não emite NF-e). O reembolso continua só para transações de drop.
+- **Financeiro**: capturar, cancelar e estornar transação saíram da tela. O CRUD de `drop-transactions` responde 403 `DropPurchase.UseWorkflow`, e na vitrine o estorno é o cancelamento do pedido, acompanhado por `paymentOperations` no detalhe (reagendar falha e confirmar estorno manual pelas rotas `payment-operations/{id}/retry` e `confirm-manual-refund`). A nota fiscal voltou como **registro** de nota emitida fora (`invoices/add` exige número, série e chave de acesso); o back não emite NF-e.
 
 ## 13. Clientes (task 38)
 
@@ -138,7 +138,7 @@ Unidade das dimensões: o front usa **cm** e o peso em **kg**. Confirmar se é a
 
 ## 14. Configurações comerciais (task 39)
 
-- **O prazo de pagamento não aparece na rota pública.** `GET storefront/store` devolve moeda, pedido mínimo e limite de itens, mas não `pendingOrderExpirationMinutes`; o checkout (task 32) não consegue mostrar o prazo ao cliente. Sugestão: incluir o campo na resposta pública.
+- **O prazo de pagamento não aparece na rota pública.** `GET storefront/store` devolve moeda, pedido mínimo e limite de itens, mas não `pendingOrderExpirationMinutes`; o checkout (task 32) não consegue mostrar o prazo ao cliente. Sugestão: incluir o campo na resposta pública. O front já lê `pendingOrderExpirationMinutes` de `GET storefront/{slug}/store` quando vier e mostra "você tem N para pagar" na revisão do checkout; enquanto não vem, avisa que o horário limite aparece na confirmação (`paymentExpiresAt` do pedido).
 - **Mensagens de validação** chegam com o nome do campo em inglês separado ("min Order Value não pode ser negativo"). A tela barra antes do envio, com os mesmos limites, e usa texto próprio.
 
 ## 15. Domínio próprio (task 41)

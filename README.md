@@ -44,13 +44,13 @@ O modo é escolhido no arquivo `.env.local`. Para criar o seu, copie o `.env.exa
 
 | Configuração | Valor | Efeito |
 |---|---|---|
-| `VITE_API_MODE` | `mock` (padrão) | Usa dados de exemplo e não precisa de servidor |
-| | `http` | Chama o back-end de verdade pelo Gateway (login obrigatório) |
+| `VITE_API_MODE` | `http` (padrão) | Chama o back-end de verdade pelo Gateway (login obrigatório) |
+| | `mock` | Só em `npm run dev`: usa dados de exemplo e não precisa de servidor. O `npm run build` recusa este modo |
 | `VITE_GATEWAY_URL` | `https://localhost:5000` (padrão) | Endereço do Gateway usado pelo servidor de desenvolvimento |
 | `VITE_STORE_SLUG` | ex.: `teste` | Slug da loja do cliente. Sem ele, o front usa a primeira parte do endereço (`teste.stores.localhost` → `teste`) |
 | `VITE_ADMIN_ENABLED` | `true` / `false` | Libera o painel na versão de produção (em desenvolvimento ele sempre aparece) |
 
-No modo de exemplo, o painel mostra as requisições que **seriam** enviadas ao back-end, o que ajuda a conferir a integração sem servidor.
+O build de produção sempre usa o back-end real: o mock, os dados de exemplo e as dicas de login de exemplo ficam fora do pacote. No modo de exemplo, o painel mostra as requisições que **seriam** enviadas ao back-end, o que ajuda a conferir a integração sem servidor.
 
 ### Usando o back-end real (`http`)
 
