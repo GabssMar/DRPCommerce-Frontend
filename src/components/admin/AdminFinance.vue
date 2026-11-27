@@ -1,22 +1,20 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
-import { AlertCircle } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
 import { href } from '../../router';
-import { admin, issueInvoice, refundOrder } from '../../services/admin-api';
+import { admin } from '../../services/admin-api';
 import {
   INVOICE_STATUS, INVOICE_TYPE, TRANSACTION_METHOD, TRANSACTION_STATUS, TRANSACTION_TYPE, labelOf, options,
 } from '../../services/status';
 import { brl, brlCompact, dropOrderCode, formatDateTime, formatNumber, localDayKey, storeOrderCode } from '../../services/format';
 import LoadState from '../ui/LoadState.vue';
-import ModalDialog from '../ui/ModalDialog.vue';
 import PaginationNav from '../ui/PaginationNav.vue';
 import StatusBadge from '../ui/StatusBadge.vue';
 
 // E6 · Financeiro. Rotas: GET drop-transactions/get-all + transactions/get-all,
 // PUT …/update (capturar: statusId 3 · cancelar: statusId 5), reembolso (transação typeId 2),
-// GET invoices/get-all · POST invoices/add · PUT invoices/update (cancelar: statusId 4).
-// Transações do drop só são lidas: o CRUD de drop-transactions responde 403 DropPurchase.UseWorkflow.
+// GET invoices/get-all · PUT invoices/update (cancelar: statusId 4). As transações só são lidas: o drop
+// responde 403 DropPurchase.UseWorkflow, e a vitrine confirma e estorna o pagamento no pedido (Pedidos).
 const props = defineProps({ params: { type: Object, default: () => ({}) } });
 
 const tab = computed(() => (props.params.tab === 'notas' ? 'notas' : 'transacoes'));
@@ -24,8 +22,8 @@ const PAGE_SIZE = 20;
 const PERIOD_DAYS = 14;
 
 const data = useAsync(async () => {
-  const [dropTx, storeTx, invoices, storeOrders] = await Promise.all([
-    admin.dropTransactions.getAll(), admin.transactions.getAll(), admin.invoices.getAll(), admin.orders.getAll(),
+  const [dropTx, storeTx, invoices] = await Promise.all([
+    admin.dropTransactions.getAll(), admin.transactions.getAll(), admin.invoices.getAll(),
   ]);
   const transactions = [
     ...dropTx.map((t) => ({
@@ -38,7 +36,7 @@ const data = useAsync(async () => {
     })),
   ].map((t) => ({ ...t, amount: t.raw.amount, fee: t.raw.fee, createdAt: t.raw.createdAt, reference: t.raw.gatewayReference }))
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  return { transactions, invoices, storeOrders };
+  return { transactions, invoices };
 });
 
 const codeOf = (t) => (t.source === 'drop' ? dropOrderCode(t.orderId) : storeOrderCode(t.orderId));
@@ -69,50 +67,12 @@ const rows = computed(() => (data.data.value?.transactions ?? [])
   .filter((t) => !filters.statusId || t.statusId === Number(filters.statusId)));
 const pageRows = computed(() => rows.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE));
 
-const resource = (t) => (t.source === 'drop' ? admin.dropTransactions : admin.transactions);
-const statusField = (t) => (t.source === 'drop' ? 'dropTransactionStatusId' : 'transactionStatusId');
-
-const capture = useAction(async (t) => {
-  await resource(t).patch(t.raw, { [statusField(t)]: 3, paidAt: new Date().toISOString() });
-  await data.reload();
-});
-const cancel = useAction(async (t) => {
-  await resource(t).patch(t.raw, { [statusField(t)]: 5 });
-  await data.reload();
-});
-
-const refunding = ref(null);
-const refund = useAction(async () => {
-  const t = refunding.value;
-  const order = t.source === 'drop' ? await admin.dropOrders.getById(t.orderId) : await admin.orders.getById(t.orderId);
-  await refundOrder(t.source, order, t.raw);
-  refunding.value = null;
-  await data.reload();
-});
-const actionError = computed(() => capture.error.value || cancel.error.value);
 
 // Notas fiscais
 const invoices = computed(() => [...(data.data.value?.invoices ?? [])].sort((a, b) => b.id - a.id));
 const invoiceLabel = (i) => `${labelOf(INVOICE_TYPE, i.invoiceTypeId)} ${i.number} · série ${i.series}`;
 const cancelInvoice = useAction(async (invoice) => {
   await admin.invoices.patch(invoice, { invoiceStatusId: 4 });
-  await data.reload();
-});
-
-const showEmit = ref(false);
-const emitOrderId = ref('');
-const invoiceable = computed(() => {
-  const withInvoice = new Set(invoices.value.filter((i) => i.invoiceStatusId !== 4).map((i) => i.orderId));
-  return (data.data.value?.storeOrders ?? [])
-    .filter((o) => o.orderPaymentStatusId === 2 && ![6, 7].includes(o.orderStatusId) && !withInvoice.has(o.id))
-    .sort((a, b) => b.id - a.id);
-});
-const emitNote = useAction(async () => {
-  const order = invoiceable.value.find((o) => o.id === Number(emitOrderId.value));
-  const next = Math.max(0, ...invoices.value.map((i) => Number(i.number) || 0)) + 1;
-  await issueInvoice(order, next);
-  showEmit.value = false;
-  emitOrderId.value = '';
   await data.reload();
 });
 </script>
@@ -264,19 +224,6 @@ const emitNote = useAction(async () => {
         </select>
       </div>
 
-      <p
-        v-if="actionError"
-        class="ds-error"
-        role="alert"
-      >
-        <AlertCircle
-          :size="16"
-          :stroke-width="1.5"
-          aria-hidden="true"
-        />
-        {{ actionError.message }}
-      </p>
-
       <div class="ds-card ds-card--flush">
         <LoadState
           :is-empty="!rows.length"
@@ -350,40 +297,12 @@ const emitNote = useAction(async () => {
                   <td class="ds-table__td--numeric">
                     {{ brl(t.fee) }}
                   </td>
-                  <td>
-                    <button
-                      v-if="t.source === 'store' && t.typeId === 1 && t.statusId === 2"
-                      type="button"
-                      class="ds-btn ds-btn--secondary ds-btn--sm"
-                      :disabled="capture.isPending.value"
-                      @click="capture.run(t)"
-                    >
-                      Capturar
-                    </button>
-                    <button
-                      v-else-if="t.source === 'store' && t.typeId === 1 && t.statusId === 1"
-                      type="button"
-                      class="ds-btn ds-btn--ghost ds-btn--sm"
-                      :disabled="cancel.isPending.value"
-                      @click="cancel.run(t)"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      v-else-if="t.source === 'store' && t.typeId === 1 && t.statusId === 3"
-                      type="button"
-                      class="ds-btn ds-btn--ghost ds-btn--sm"
-                      @click="refunding = t"
-                    >
-                      Reembolsar
-                    </button>
-                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div class="ds-table-footer">
-            <span class="ds-hint">Capturar confirma um pagamento autorizado no cartão.</span>
+            <span class="ds-hint">Somente leitura: o pagamento da vitrine é confirmado e estornado no pedido, em Pedidos.</span>
             <PaginationNav
               v-model:page="page"
               :page-size="PAGE_SIZE"
@@ -402,13 +321,6 @@ const emitNote = useAction(async () => {
         <h2 class="ds-card__title">
           {{ tab === 'notas' ? 'Notas fiscais' : 'Notas fiscais recentes' }}
         </h2>
-        <button
-          type="button"
-          class="ds-btn ds-btn--secondary ds-btn--sm"
-          @click="showEmit = true"
-        >
-          Emitir nota
-        </button>
       </header>
 
       <div
@@ -516,102 +428,4 @@ const emitNote = useAction(async () => {
       </p>
     </article>
   </LoadState>
-
-  <ModalDialog
-    v-if="refunding"
-    title="Reembolsar pagamento"
-    @close="refunding = null"
-  >
-    <p class="ds-text-sm">
-      Registra o reembolso de {{ brl(refunding.amount) }} do pedido {{ codeOf(refunding) }} e marca o pedido como "Reembolsado".
-    </p>
-    <p
-      v-if="refund.error.value"
-      class="ds-error"
-      role="alert"
-    >
-      {{ refund.error.value.message }}
-    </p>
-    <template #footer>
-      <button
-        type="button"
-        class="ds-btn ds-btn--ghost"
-        @click="refunding = null"
-      >
-        Cancelar
-      </button>
-      <button
-        type="button"
-        class="ds-btn ds-btn--danger"
-        :disabled="refund.isPending.value"
-        @click="refund.run()"
-      >
-        Reembolsar
-      </button>
-    </template>
-  </ModalDialog>
-
-  <ModalDialog
-    v-if="showEmit"
-    title="Emitir nota fiscal"
-    @close="showEmit = false"
-  >
-    <form
-      id="emit-form"
-      class="ds-stack--4"
-      @submit.prevent="emitNote.run()"
-    >
-      <div class="ds-field">
-        <label
-          class="ds-label"
-          for="emit-order"
-        >Pedido da vitrine (pago, sem nota)</label>
-        <select
-          id="emit-order"
-          v-model="emitOrderId"
-          class="ds-input"
-          required
-        >
-          <option
-            value=""
-            disabled
-          >
-            Selecione
-          </option>
-          <option
-            v-for="o in invoiceable"
-            :key="o.id"
-            :value="o.id"
-          >
-            {{ storeOrderCode(o.id) }} · {{ brl(o.totalAmount) }}
-          </option>
-        </select>
-        <span class="ds-hint">A nota nasce "Pendente" até a autorização da SEFAZ.</span>
-      </div>
-      <p
-        v-if="emitNote.error.value"
-        class="ds-error"
-        role="alert"
-      >
-        {{ emitNote.error.value.message }}
-      </p>
-    </form>
-    <template #footer>
-      <button
-        type="button"
-        class="ds-btn ds-btn--ghost"
-        @click="showEmit = false"
-      >
-        Cancelar
-      </button>
-      <button
-        type="submit"
-        form="emit-form"
-        class="ds-btn ds-btn--primary"
-        :disabled="!emitOrderId || emitNote.isPending.value"
-      >
-        Emitir
-      </button>
-    </template>
-  </ModalDialog>
 </template>

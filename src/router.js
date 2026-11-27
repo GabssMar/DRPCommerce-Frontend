@@ -36,6 +36,7 @@ const ROUTES = [
   ['admin-live', '/admin/ao-vivo'],
   ['admin-live', '/admin/ao-vivo/:id'],
   ['admin-orders', '/admin/pedidos'],
+  ['admin-orders', '/admin/pedidos/:id'],
   ['admin-finance', '/admin/financeiro'],
   ['admin-finance', '/admin/financeiro/:tab'],
   ['admin-catalog', '/admin/catalogo'],

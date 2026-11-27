@@ -1,5 +1,6 @@
 import { createSeed, SIGNED_IN_CUSTOMER_ID, SIGNED_IN_EMPLOYEE_ID } from './seed';
 import { toEntity } from '../resources';
+import { ORDER_STATUS, PAYMENT_STATUS, SHIPMENT_STATUS, SHIPMENT_TYPE, TRANSACTION_METHOD, TRANSACTION_STATUS } from '../status';
 import { createPlansMock } from './plans';
 import { createCatalogMock } from './catalog';
 import { createAddressesMock } from './addresses';
@@ -1059,6 +1060,173 @@ function couponRoutes(method, path, body, query) {
   return null;
 }
 
+// ------------------------------------------------------ PEDIDOS (task 37) ---
+
+const ORDER_SORTS = {
+  newest: (a, b) => b.id - a.id,
+  oldest: (a, b) => a.id - b.id,
+  total_desc: (a, b) => b.totalAmount - a.totalAmount,
+  total_asc: (a, b) => a.totalAmount - b.totalAmount,
+};
+const SHIPMENT_FIELDS = ['shipmentTypeId', 'carrierName', 'trackingCode', 'estimatedDelivery'];
+
+// Número comercial: o seed não tem; usa a sequência dos ids (10401 é o pedido 1).
+const orderNumber = (o) => o.orderNumber ?? (o.id > 10400 ? o.id - 10400 : o.id);
+const statusName = (id) => ORDER_STATUS[id]?.label ?? `#${id}`;
+const paymentName = (id) => PAYMENT_STATUS[id]?.label ?? `#${id}`;
+
+function orderRoutes(method, path, body, query) {
+  const d = data();
+  const orders = d['store/orders'].filter((o) => !o.isDeleted);
+  const customerName = (id) => d['store/customers'].find((c) => c.id === id)?.fullName ?? `Cliente #${id}`;
+
+  // Histórico: o seed só guarda o estado atual; monta a trilha até ele na primeira leitura.
+  const historyOf = (o) => {
+    if (!o.history) {
+      const steps = o.orderStatusId >= 6 ? [1, o.orderStatusId] : Array.from({ length: o.orderStatusId }, (_, i) => i + 1);
+      o.history = steps.map((to, i) => ({
+        fromStatusId: i ? steps[i - 1] : null, fromStatus: i ? statusName(steps[i - 1]) : null, toStatusId: to, toStatus: statusName(to),
+        fromPaymentStatusId: null, toPaymentStatusId: to === 1 ? 1 : o.orderPaymentStatusId, toPaymentStatus: paymentName(to === 1 ? 1 : o.orderPaymentStatusId),
+        source: i ? 2 : 1, actorId: i ? 1 : null, reason: i ? '' : 'Pedido criado',
+        changedAt: new Date(Date.parse(o.createdAt) + i * 3600e3).toISOString(),
+      }));
+    }
+    return o.history;
+  };
+  const record = (o, toStatusId, toPaymentStatusId, reason) => {
+    const history = historyOf(o);
+    history.push({
+      fromStatusId: o.orderStatusId, fromStatus: statusName(o.orderStatusId), toStatusId, toStatus: statusName(toStatusId),
+      fromPaymentStatusId: o.orderPaymentStatusId, toPaymentStatusId, toPaymentStatus: paymentName(toPaymentStatusId),
+      source: 2, actorId: 1, reason, changedAt: nowIso(),
+    });
+    Object.assign(o, { orderStatusId: toStatusId, orderPaymentStatusId: toPaymentStatusId, updatedAt: nowIso() });
+  };
+
+  const paymentOf = (o) => d['store/transactions'].find((t) => t.orderId === o.id && t.transactionTypeId === 1) ?? null;
+  const detailOf = (o) => {
+    const payment = paymentOf(o);
+    return {
+      id: o.id, number: orderNumber(o), customerId: o.customerId, statusId: o.orderStatusId, status: statusName(o.orderStatusId),
+      paymentStatusId: o.orderPaymentStatusId, paymentStatus: paymentName(o.orderPaymentStatusId), subTotal: o.subTotal,
+      discountAmount: o.discountAmount, shippingCost: o.shippingCost, taxAmount: o.taxAmount, totalAmount: o.totalAmount, couponId: o.couponId,
+      shippingAddressLine: o.shippingAddressLine, shippingCity: o.shippingCity, shippingStateId: o.shippingStateId, shippingZipCode: o.shippingZipCode,
+      notes: o.notes, paymentExpiresAt: o.orderStatusId === 1 ? new Date(Date.parse(o.createdAt) + 3600e3).toISOString() : null,
+      canCustomerCancel: o.orderStatusId === 1, createdAt: o.createdAt,
+      items: d['store/order-items'].filter((i) => i.orderId === o.id).map((i) => ({
+        id: i.id, productId: i.productId, productVariantId: i.productId ? i.productId * 10 : null, serviceId: i.serviceId, itemName: i.itemName,
+        variantName: '', sku: i.sku, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, totalPrice: i.totalPrice,
+      })),
+      payment: payment && {
+        provider: payment.gatewayProvider, methodId: payment.transactionMethodId, method: TRANSACTION_METHOD[payment.transactionMethodId]?.label,
+        statusId: payment.transactionStatusId, status: TRANSACTION_STATUS[payment.transactionStatusId]?.label, amount: payment.amount,
+        reference: payment.gatewayReference, checkoutUrl: '', instructions: '', expiresAt: null, paidAt: payment.paidAt, refundedAt: payment.refundedAt,
+      },
+      shipments: d['store/shipments'].filter((s) => s.orderId === o.id).map((s) => ({
+        id: s.id, shipmentTypeId: s.shipmentTypeId, shipmentType: SHIPMENT_TYPE[s.shipmentTypeId]?.label, statusId: s.shipmentStatusId,
+        status: SHIPMENT_STATUS[s.shipmentStatusId]?.label, carrierName: s.carrierName, trackingCode: s.trackingCode,
+        estimatedDelivery: s.estimatedDelivery, shippedAt: s.shippedAt, deliveredAt: s.deliveredAt,
+      })),
+      history: [...historyOf(o)].sort((a, b) => a.changedAt.localeCompare(b.changedAt)),
+    };
+  };
+
+  if (path === 'orders/search' && method === 'GET') {
+    const number = Number(query.get('Number')) || null;
+    const statusIds = query.getAll('StatusIds').map(Number);
+    const paymentIds = query.getAll('PaymentStatusIds').map(Number);
+    const customerId = Number(query.get('CustomerId')) || null;
+    const from = query.get('CreatedFrom');
+    const to = query.get('CreatedTo');
+    const min = query.get('MinTotal');
+    const max = query.get('MaxTotal');
+    const rows = orders.filter((o) => (!number || orderNumber(o) === number)
+      && (!statusIds.length || statusIds.includes(o.orderStatusId))
+      && (!paymentIds.length || paymentIds.includes(o.orderPaymentStatusId))
+      && (!customerId || o.customerId === customerId)
+      && (!from || o.createdAt >= from) && (!to || o.createdAt <= to)
+      && (min == null || o.totalAmount >= Number(min)) && (max == null || o.totalAmount <= Number(max)))
+      .sort(ORDER_SORTS[query.get('Sort')] ?? ORDER_SORTS.newest);
+    const page = Number(query.get('Page') ?? 1);
+    const pageSize = Number(query.get('PageSize') ?? 20);
+    return ok({
+      items: rows.slice((page - 1) * pageSize, page * pageSize).map((o) => ({
+        id: o.id, number: orderNumber(o), customerId: o.customerId, customerName: customerName(o.customerId), statusId: o.orderStatusId,
+        status: statusName(o.orderStatusId), paymentStatusId: o.orderPaymentStatusId, paymentStatus: paymentName(o.orderPaymentStatusId),
+        subTotal: o.subTotal, discountAmount: o.discountAmount, totalAmount: o.totalAmount, couponId: o.couponId,
+        paymentMethodId: paymentOf(o)?.transactionMethodId ?? null, createdAt: o.createdAt,
+      })),
+      totalCount: rows.length, page, pageSize,
+    });
+  }
+
+  const match = path.match(/^orders\/(\d+)\/(detail|confirm-payment|start-processing|ship|deliver|cancel)$/);
+  if (!match) return null;
+  const o = orders.find((x) => x.id === Number(match[1]));
+  if (!o) return problem(404, 'Order.NotFound', 'Pedido não encontrado.');
+  const action = match[2];
+  if (action === 'detail') return method === 'GET' ? ok(detailOf(o)) : null;
+  if (method !== 'POST') return null;
+  const invalid = (code, title) => problem(409, code, title);
+  const input = body ?? {};
+
+  if (action === 'confirm-payment') {
+    if (o.orderStatusId >= 2 && o.orderPaymentStatusId === 2) return ok(detailOf(o));
+    if (o.orderStatusId !== 1 || o.orderPaymentStatusId !== 1) return invalid('Order.NotAwaitingPayment', 'O pedido não está aguardando pagamento.');
+    let payment = paymentOf(o);
+    if (!payment) {
+      if (!input.transactionMethodId) return problem(400, 'Payment.MethodRequired', 'Informe o método de pagamento.');
+      payment = {
+        id: nextIdOf(d['store/transactions']), orderId: o.id, customerId: o.customerId, transactionTypeId: 1, transactionMethodId: input.transactionMethodId,
+        transactionStatusId: 1, amount: o.totalAmount, fee: 0, gatewayReference: input.gatewayReference ?? '', gatewayProvider: 'manual',
+        gatewayPayload: '{}', paidAt: null, refundedAt: null, createdAt: nowIso(), updatedAt: nowIso(),
+      };
+      d['store/transactions'].push(payment);
+    }
+    Object.assign(payment, { transactionStatusId: 3, paidAt: nowIso() });
+    record(o, 2, 2, input.note || 'Pagamento confirmado manualmente');
+    return ok(detailOf(o));
+  }
+
+  if (action === 'start-processing') {
+    if (o.orderStatusId !== 2) return invalid('Order.InvalidOperation', 'Só pedidos confirmados podem entrar em processamento.');
+    record(o, 3, o.orderPaymentStatusId, 'Pedido em processamento');
+    return ok(detailOf(o));
+  }
+
+  if (action === 'ship') {
+    if (o.orderStatusId !== 3) return invalid('Order.InvalidOperation', 'Só pedidos em processamento podem ser enviados.');
+    const sent = SHIPMENT_FIELDS.some((k) => input[k]);
+    const physical = d['store/order-items'].some((i) => i.orderId === o.id && i.productId);
+    if (!sent && physical) return problem(400, 'Order.ShipmentRequired', 'Informe os dados de envio.');
+    if (sent) {
+      if (!input.shipmentTypeId) return problem(400, 'Validation.InvalidInput', 'Informe a modalidade de envio.');
+      if (!input.estimatedDelivery || (input.shipmentTypeId !== 4 && !input.carrierName)) return problem(400, 'Validation.InvalidInput', 'Informe a transportadora e a previsão de entrega.');
+      d['store/shipments'].push({
+        id: nextIdOf(d['store/shipments']), orderId: o.id, supplierId: null, shipmentTypeId: input.shipmentTypeId, carrierName: input.carrierName ?? '',
+        trackingCode: input.trackingCode ?? '', shipmentStatusId: 4, shippingCost: o.shippingCost, estimatedDelivery: input.estimatedDelivery,
+        shippedAt: nowIso(), deliveredAt: null, createdAt: nowIso(), updatedAt: nowIso(),
+      });
+    }
+    record(o, 4, o.orderPaymentStatusId, [input.note, input.trackingCode && `Rastreio ${input.trackingCode}`].filter(Boolean).join(' · ') || 'Pedido enviado');
+    return ok(detailOf(o));
+  }
+
+  if (action === 'deliver') {
+    if (o.orderStatusId !== 4) return invalid('Order.InvalidOperation', 'Só pedidos enviados podem ser entregues.');
+    d['store/shipments'].filter((s) => s.orderId === o.id).forEach((s) => Object.assign(s, { shipmentStatusId: 5, deliveredAt: nowIso() }));
+    record(o, 5, o.orderPaymentStatusId, 'Pedido entregue');
+    return ok(detailOf(o));
+  }
+
+  if (o.orderStatusId === 6) return ok(detailOf(o));
+  if (![1, 2, 3].includes(o.orderStatusId)) return invalid('Order.CancelNotAllowed', 'O pedido não pode mais ser cancelado.');
+  if (!String(input.reason ?? '').trim()) return problem(400, 'Validation.InvalidInput', 'Informe o motivo do cancelamento.');
+  const paid = o.orderPaymentStatusId === 2;
+  record(o, 6, paid ? 4 : o.orderPaymentStatusId, paid ? `${input.reason.trim()} · Pagamento estornado` : input.reason.trim());
+  return ok(detailOf(o));
+}
+
 function storeBackoffice(method, path, body, who, query) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
@@ -1159,6 +1327,8 @@ function storeBackoffice(method, path, body, who, query) {
   if (categories) return categories;
   const couponsResult = couponRoutes(method, path, body, query);
   if (couponsResult) return couponsResult;
+  const ordersResult = orderRoutes(method, path, body, query);
+  if (ordersResult) return ordersResult;
 
   return null;
 }

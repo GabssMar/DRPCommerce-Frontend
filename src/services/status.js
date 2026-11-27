@@ -195,6 +195,9 @@ export const SHIPMENT_STATUS = table([
   [7, 'Devolvido', 'done'],
 ]);
 
+// Quem fez a mudança no histórico do pedido (OrderChangeSource, numérico).
+export const ORDER_CHANGE_SOURCE = { 1: 'Cliente', 2: 'Painel', 3: 'Sistema', 4: 'Gateway de pagamento' };
+
 export const MEMBERSHIP_KIND = table([
   [1, 'Dono principal'],
   [2, 'Sócio-proprietário'],

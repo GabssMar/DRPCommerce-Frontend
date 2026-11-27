@@ -1,5 +1,6 @@
 import { DROP_BASE, STORE_BASE, storefrontPath } from './config';
 import { request } from './http';
+import { searchQuery, toPage } from './paging';
 import { crud } from './resources';
 import { getAccessToken, REALMS } from './session';
 
@@ -120,6 +121,28 @@ export const scheduleNotifications = ({ eventId, customerIds, channelIds, typeId
 
 // ---------------------------------------------------------------- PEDIDOS ---
 
+// Vitrine (task 37): busca paginada e uma rota por transição, que movimenta
+// estoque e cupom na mesma transação. Cada transição devolve o detalhe atualizado.
+//   Filtros: number, statusIds[], paymentStatusIds[], customerId, couponId, createdFrom, createdTo,
+//   minTotal, maxTotal, sort (newest | oldest | total_desc | total_asc), page, pageSize.
+export const searchOrders = async (filters) => toPage(await request('GET', store(`orders/search${searchQuery(filters)}`), opts()));
+
+// Itens, cobrança, envios e histórico (linha do tempo).
+export const getOrderDetail = (id) => request('GET', store(`orders/${id}/detail`), opts());
+
+const transition = (id, action, body) => request('POST', store(`orders/${id}/${action}`), opts(body));
+
+// Pagamento conferido à mão. O método só é pedido quando o pedido ainda não tem cobrança.
+export const confirmPayment = (id, { transactionMethodId, gatewayReference, note } = {}) =>
+  transition(id, 'confirm-payment', { transactionMethodId, gatewayReference, note });
+export const startProcessing = (id) => transition(id, 'start-processing');
+// Produto físico exige shipmentTypeId, estimatedDelivery e, fora da retirada, carrierName.
+export const shipOrder = (id, { shipmentTypeId, carrierName, trackingCode, estimatedDelivery, note } = {}) =>
+  transition(id, 'ship', { shipmentTypeId, carrierName, trackingCode, estimatedDelivery, note });
+export const deliverOrder = (id) => transition(id, 'deliver');
+// Pedido pago: o estorno é registrado e a devolução do dinheiro é feita fora do sistema.
+export const cancelOrder = (id, reason) => transition(id, 'cancel', { reason });
+
 // Compra do drop: o CRUD de drop-orders/drop-transactions responde 403
 // DropPurchase.UseWorkflow. Depois do pagamento confirmado e sem revisão financeira,
 // o pedido só avança para 3/4/5 por POST drop-purchases/{id}/fulfillment.
@@ -132,76 +155,8 @@ export const dropNextStatuses = (order) => {
   return DROP_FULFILLMENT_STATUSES.filter((s) => s > order.dropOrderStatusId);
 };
 
-export const setOrderStatus = (source, order, statusId) =>
-  source === 'drop'
-    ? request('POST', `${DROP_BASE}/drop-purchases/${order.id}/fulfillment`, opts({ statusId }))
-    : admin.orders.patch(order, { orderStatusId: statusId });
-
-// Reembolso: transação tipo 2 (Reembolso) + pedido 7 Reembolsado / pagamento 4.
-export const refundOrder = async (source, order, payment) => {
-  const now = new Date().toISOString();
-  const refund = {
-    customerId: order.customerId,
-    amount: order.totalAmount,
-    fee: 0,
-    gatewayReference: '',
-    gatewayProvider: payment?.gatewayProvider ?? '',
-    gatewayPayload: '{}',
-    paidAt: null,
-    refundedAt: now,
-  };
-  if (source === 'drop') throw new Error('Compras de drop ainda não têm estorno no back-end.');
-  await admin.transactions.add({
-    ...refund, orderId: order.id, transactionTypeId: 2,
-    transactionMethodId: payment?.transactionMethodId ?? 1, transactionStatusId: 6,
-  });
-  return admin.orders.patch(order, { orderStatusId: 7, orderPaymentStatusId: 4 });
-};
-
-// Envio da vitrine: cria ou atualiza o Shipment do pedido.
-export const saveShipment = (order, existing, { carrierName, shipmentTypeId, trackingCode, stateUf }) => {
-  const now = new Date().toISOString();
-  const fields = {
-    carrierName,
-    shipmentTypeId,
-    trackingCode,
-    shipmentStatusId: trackingCode ? 3 : 1,
-    shippedAt: trackingCode ? existing?.shippedAt ?? now : null,
-    // O comando recebe a UF como texto.
-    state: stateUf,
-  };
-  if (existing) return admin.shipments.patch(existing, fields);
-  return admin.shipments.add({
-    orderId: order.id,
-    supplierId: null,
-    shippingCost: order.shippingCost,
-    addressLine: order.shippingAddressLine,
-    city: order.shippingCity,
-    stateId: order.shippingStateId,
-    zipCode: order.shippingZipCode,
-    country: 'Brasil',
-    estimatedDelivery: new Date(Date.now() + 7 * 864e5).toISOString(),
-    deliveredAt: null,
-    ...fields,
-  });
-};
-
-// Nota fiscal (só pedidos da vitrine têm Invoice no back).
-export const issueInvoice = (order, sequence) =>
-  admin.invoices.add({
-    orderId: order.id,
-    customerId: order.customerId,
-    enterpriseId: order.enterpriseId,
-    number: String(sequence).padStart(6, '0'),
-    series: '1',
-    accessKey: '',
-    invoiceTypeId: 1,
-    invoiceStatusId: 1,
-    totalAmount: order.totalAmount,
-    taxAmount: order.taxAmount,
-    fileUrl: '',
-    issuedAt: null,
-  });
+export const advanceDropOrder = (order, statusId) =>
+  request('POST', `${DROP_BASE}/drop-purchases/${order.id}/fulfillment`, opts({ statusId }));
 
 // ------------------------------------------------------------- AUDITORIA ---
 
