@@ -119,6 +119,14 @@ export const scheduleNotifications = ({ eventId, customerIds, channelIds, typeId
     sentAt: null,
   }))));
 
+// -------------------------------------------------------- CONFIGURAÇÕES ---
+
+// Task 39 (settings.manage). Sem configuração salva, o GET devolve o padrão (id 0).
+// { currencyCode, minOrderValue, maxItemsPerOrder, allowBackorder, pendingOrderExpirationMinutes }
+export const getStoreSettings = () => request('GET', store('store-settings'), opts());
+export const updateStoreSettings = ({ currencyCode, minOrderValue, maxItemsPerOrder, allowBackorder, pendingOrderExpirationMinutes }) =>
+  request('PUT', store('store-settings'), opts({ currencyCode, minOrderValue, maxItemsPerOrder, allowBackorder, pendingOrderExpirationMinutes }));
+
 // --------------------------------------------------------------- CLIENTES ---
 
 // Task 38. Filtros: term (nome, e-mail ou telefone), isActive, isVerified, emailConfirmed, stateId,

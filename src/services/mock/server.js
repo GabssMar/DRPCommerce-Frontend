@@ -1281,6 +1281,23 @@ function customerRoutes(method, path, body, query) {
   return null;
 }
 
+// ------------------------------------------------- CONFIGURAÇÕES (task 39) ---
+
+function settingsRoutes(method, path, body) {
+  const d = data();
+  d['store/settings'] ??= { id: 0, enterpriseId: 1, currencyCode: 'BRL', minOrderValue: 0, maxItemsPerOrder: null, allowBackorder: false, pendingOrderExpirationMinutes: 60 };
+  if (path !== 'store-settings') return null;
+  if (method === 'GET') return ok(d['store/settings']);
+  if (method !== 'PUT') return null;
+  const invalid = (title) => problem(400, 'Validation.InvalidInput', title);
+  if (!/^[A-Za-z]{3}$/.test(body.currencyCode ?? '')) return invalid('A moeda precisa ter 3 letras.');
+  if (!(Number(body.minOrderValue) >= 0)) return invalid('O pedido mínimo não pode ser negativo.');
+  if (body.maxItemsPerOrder != null && !(body.maxItemsPerOrder >= 1 && body.maxItemsPerOrder <= 10000)) return invalid('O limite de itens vai de 1 a 10.000.');
+  if (!(body.pendingOrderExpirationMinutes >= 5 && body.pendingOrderExpirationMinutes <= 10080)) return invalid('O prazo vai de 5 a 10.080 minutos.');
+  Object.assign(d['store/settings'], { ...body, currencyCode: body.currencyCode.toUpperCase(), id: d['store/settings'].id || 1 });
+  return ok(d['store/settings']);
+}
+
 function storeBackoffice(method, path, body, who, query) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
@@ -1385,6 +1402,8 @@ function storeBackoffice(method, path, body, who, query) {
   if (ordersResult) return ordersResult;
   const customersResult = customerRoutes(method, path, body, query);
   if (customersResult) return customersResult;
+  const settingsResult = settingsRoutes(method, path, body);
+  if (settingsResult) return settingsResult;
 
   return null;
 }
