@@ -3,12 +3,16 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  // O build vai para produção: os dados de exemplo nunca entram nele.
+  if (command === 'build' && env.VITE_API_MODE === 'mock') {
+    throw new Error('VITE_API_MODE=mock só vale no servidor de desenvolvimento (npm run dev). Remova a variável ou use http para o build.')
+  }
   return {
     plugins: [vue()],
     server: {
-      // Em dev, /api vai para o Commerce.Gateway (YARP). Só usado com VITE_API_MODE=http.
+      // Em dev, /api vai para o Commerce.Gateway (YARP). Não é usado com VITE_API_MODE=mock.
       // O Gateway local roda em HTTPS com certificado de desenvolvimento: secure: false.
       // A loja do cliente vai no caminho (storefront/{slug}/...). Sem VITE_STORE_SLUG, o
       // front usa o subdomínio como slug: abra em http://teste.stores.localhost:5173.

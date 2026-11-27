@@ -2,7 +2,7 @@
 import { reactive } from 'vue';
 import { AlertCircle, ArrowLeft, CheckCircle } from '@lucide/vue';
 import { href } from '../../router';
-import { IS_MOCK } from '../../services/config';
+import { MOCK_HINTS } from '../../services/config';
 import { useAction } from '../../composables/useAsync';
 import { loginEmployee } from '../../services/auth';
 import { authNotice } from '../../services/session';
@@ -41,11 +41,10 @@ const login = useAction(async () => {
         Acesso da equipe da loja. O login de cliente é separado.
       </p>
       <p
-        v-if="IS_MOCK"
+        v-if="MOCK_HINTS"
         class="ds-hint"
       >
-        Modo de exemplo: qualquer e-mail e senha entram como o lojista de exemplo.
-        varias@exemplo.com tem duas lojas, nova@exemplo.com nenhuma e bloqueado@exemplo.com simula o bloqueio por tentativas.
+        {{ MOCK_HINTS.backoffice }}
       </p>
     </div>
 

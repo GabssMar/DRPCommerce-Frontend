@@ -54,9 +54,12 @@ const httpTransport = async (method, url, { headers, body }) => {
   }
 };
 
-// O servidor do mock só é carregado no modo mock. Em VITE_API_MODE=http o Vite troca a
-// condição por `false` no build e deixa o mock (seed, dados de exemplo) fora do pacote.
-const loadMock = import.meta.env?.VITE_API_MODE === 'http' ? null : () => import('./mock/server');
+// O servidor do mock só é carregado no modo mock. A condição repete a de IS_MOCK com
+// import.meta.env direto: o Vite a troca por `false` no build e o mock (seed, dados de
+// exemplo) fica fora do pacote. Com IS_MOCK importado, o import() continuaria no build.
+const loadMock = import.meta.env.DEV === true && import.meta.env.VITE_API_MODE === 'mock'
+  ? () => import('./mock/server')
+  : null;
 
 const mockTransport = async (method, url, { headers, body }) => {
   const { mockFetch } = await loadMock();

@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { AlertCircle, ArrowLeft, CheckCircle } from '@lucide/vue';
 import { href, navigate } from '../../router';
 import { useAction } from '../../composables/useAsync';
-import { IS_MOCK, MOCK_CUSTOMER_EMAIL } from '../../services/config';
+import { MOCK_HINTS } from '../../services/config';
 import { authNotice } from '../../services/session';
 import { loginCustomer, registerCustomer } from '../../services/auth';
 import { STATES } from '../../services/status';
@@ -128,11 +128,10 @@ const activeAuth = computed(() => (mode.value === 'login' ? login : register));
       {{ authNotice.storefront }}
     </p>
     <p
-      v-if="IS_MOCK && mode === 'login'"
+      v-if="MOCK_HINTS && mode === 'login'"
       class="ds-hint"
     >
-      Modo de exemplo: entre com <span class="ds-mono">{{ MOCK_CUSTOMER_EMAIL }}</span> e qualquer senha.
-      <span class="ds-mono">bloqueado@exemplo.com</span> simula o bloqueio por tentativas.
+      {{ MOCK_HINTS.customer }}
     </p>
 
     <form
