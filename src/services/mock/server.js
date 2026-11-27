@@ -301,7 +301,10 @@ function storeStorefront(method, path, body, who) {
     })));
   }
   if (path === 'store' && method === 'GET') {
-    return raw({ tradeName: d.enterprise.tradeName, email: { value: d.enterprise.email }, phone: { value: d.enterprise.phone } });
+    return raw({
+      tradeName: d.enterprise.tradeName, email: { value: d.enterprise.email }, phone: { value: d.enterprise.phone },
+      pendingOrderExpirationMinutes: d['store/settings']?.pendingOrderExpirationMinutes ?? 60,
+    });
   }
 
   if (!who || who.realm !== 'storefront') return problem(401, 'Security.Unauthenticated', 'Autenticação necessária.');
@@ -1128,6 +1131,7 @@ function orderRoutes(method, path, body, query) {
         estimatedDelivery: s.estimatedDelivery, shippedAt: s.shippedAt, deliveredAt: s.deliveredAt,
       })),
       history: [...historyOf(o)].sort((a, b) => a.changedAt.localeCompare(b.changedAt)),
+      paymentOperations: o.paymentOperations ?? [],
     };
   };
 
@@ -1158,6 +1162,24 @@ function orderRoutes(method, path, body, query) {
       })),
       totalCount: rows.length, page, pageSize,
     });
+  }
+
+  // Operações financeiras (CancelamentoEstorno.md): retry reagenda só Failed (5);
+  // confirm-manual-refund conclui só estorno manual aguardando confirmação (7).
+  const opMatch = path.match(/^orders\/(\d+)\/payment-operations\/(\d+)\/(retry|confirm-manual-refund)$/);
+  if (opMatch && method === 'POST') {
+    const o = orders.find((x) => x.id === Number(opMatch[1]));
+    const op = o?.paymentOperations?.find((x) => x.id === Number(opMatch[2]));
+    if (!op) return problem(404, 'PaymentOperation.NotFound', 'Operação não encontrada.');
+    if (opMatch[3] === 'retry') {
+      if (op.status !== 5) return problem(409, 'PaymentOperation.NotRetryable', 'Só uma operação que falhou pode ser reagendada.');
+      op.status = 1;
+    } else {
+      if (op.status !== 7) return problem(409, 'PaymentOperation.NotAwaitingManualConfirmation', 'O estorno não aguarda confirmação manual.');
+      if (!String(body?.reference ?? '').trim()) return problem(400, 'Validation.InvalidInput', 'Informe a referência do comprovante.');
+      Object.assign(op, { status: 4, reference: body.reference.trim(), completedAt: nowIso() });
+    }
+    return ok(detailOf(o));
   }
 
   const match = path.match(/^orders\/(\d+)\/(detail|confirm-payment|start-processing|ship|deliver|cancel)$/);
@@ -1224,6 +1246,13 @@ function orderRoutes(method, path, body, query) {
   if (!String(input.reason ?? '').trim()) return problem(400, 'Validation.InvalidInput', 'Informe o motivo do cancelamento.');
   const paid = o.orderPaymentStatusId === 2;
   record(o, 6, paid ? 4 : o.orderPaymentStatusId, paid ? `${input.reason.trim()} · Pagamento estornado` : input.reason.trim());
+  // Gateway manual: o estorno fica aguardando a equipe confirmar a devolução feita fora do sistema.
+  if (paid) {
+    o.paymentOperations = [...(o.paymentOperations ?? []), {
+      id: (o.paymentOperations?.length ?? 0) + 1, kind: 2, status: 7, amount: o.totalAmount, currencyCode: 'BRL',
+      reference: null, resolutionCode: null, completedAt: null,
+    }];
+  }
   return ok(detailOf(o));
 }
 

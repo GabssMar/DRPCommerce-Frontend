@@ -162,6 +162,36 @@ export const deliverOrder = (id) => transition(id, 'deliver');
 // Pedido pago: o estorno é registrado e a devolução do dinheiro é feita fora do sistema.
 export const cancelOrder = (id, reason) => transition(id, 'cancel', { reason });
 
+// Operações financeiras do pedido (estorno, cancelamento da cobrança), no detalhe em
+// `paymentOperations`. O back processa sozinho; a equipe só age em dois casos, com
+// orders.cancel + orders.refund (Documentation/Shared/CancelamentoEstorno.md):
+//   retry                  operação Failed (5): reagenda com a mesma chave. Sem corpo.
+//   confirm-manual-refund  estorno manual aguardando confirmação (7): { reference, note }.
+// As duas devolvem o detalhe atualizado.
+const paymentOperation = (orderId, operationId, action, body) =>
+  request('POST', store(`orders/${orderId}/payment-operations/${operationId}/${action}`), opts(body));
+export const retryPaymentOperation = (orderId, operationId) => paymentOperation(orderId, operationId, 'retry');
+export const confirmManualRefund = (orderId, operationId, { reference, note }) =>
+  paymentOperation(orderId, operationId, 'confirm-manual-refund', { reference, note });
+
+// Nota fiscal emitida fora do sistema (o back não emite NF-e): só registra número, série
+// e chave de acesso no pedido da vitrine. POST invoices/add; a chave é obrigatória.
+const INVOICE_ISSUED = 3;
+export const registerInvoice = ({ order, typeId, number, series, accessKey, taxAmount = 0, fileUrl = '', issuedAt }) =>
+  admin.invoices.add({
+    orderId: order.id,
+    customerId: order.customerId,
+    number,
+    series,
+    accessKey,
+    invoiceTypeId: typeId,
+    invoiceStatusId: INVOICE_ISSUED,
+    totalAmount: order.totalAmount,
+    taxAmount,
+    fileUrl,
+    issuedAt,
+  });
+
 // Compra do drop: o CRUD de drop-orders/drop-transactions responde 403
 // DropPurchase.UseWorkflow. Depois do pagamento confirmado e sem revisão financeira,
 // o pedido só avança para 3/4/5 por POST drop-purchases/{id}/fulfillment.

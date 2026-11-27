@@ -1,15 +1,21 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
-import { AlertCircle, X } from '@lucide/vue';
+import { AlertCircle, Download, X } from '@lucide/vue';
 import { useAction, useAsync } from '../../composables/useAsync';
 import { href } from '../../router';
 import { usePagedSearch } from '../../composables/usePagedSearch';
 import { usePermissions } from '../../composables/usePermissions';
 import {
-  cancelOrder, confirmPayment, deliverOrder, getOrderDetail, searchOrders, shipOrder, startProcessing,
+  cancelOrder, confirmManualRefund, confirmPayment, deliverOrder, getOrderDetail, retryPaymentOperation, searchOrders, shipOrder,
+  startProcessing,
 } from '../../services/admin-api';
-import { ORDER_CHANGE_SOURCE, ORDER_STATUS, PAYMENT_STATUS, SHIPMENT_TYPE, TRANSACTION_METHOD, options, ufOf } from '../../services/status';
+import {
+  ORDER_CHANGE_SOURCE, ORDER_STATUS, PAYMENT_OPERATION_AWAITING_MANUAL, PAYMENT_OPERATION_FAILED, PAYMENT_OPERATION_KIND, PAYMENT_OPERATION_REVIEW,
+  PAYMENT_OPERATION_STATUS, PAYMENT_OPERATION_UNKNOWN, PAYMENT_STATUS, SHIPMENT_TYPE, TRANSACTION_METHOD, options, paymentOperationCode, ufOf,
+} from '../../services/status';
 import { brl, formatDateTime, fromDateInput, formatNumber, initials, shortName } from '../../services/format';
+import { csvMoney, downloadCsv } from '../../services/csv';
+import { PAGE_SIZE_MAX } from '../../services/paging';
 import AdminDropOrders from './AdminDropOrders.vue';
 import LoadState from '../ui/LoadState.vue';
 import ModalDialog from '../ui/ModalDialog.vue';
@@ -49,17 +55,35 @@ const messageOf = (error) => (error ? ERRORS[error.code] ?? Object.values(error.
 
 const scope = ref('store');
 
+// Filtros da tela -> query de orders/search. A lista e o CSV usam a mesma.
+const toQuery = ({ days, statusId, paymentStatusId, number, ...rest }) => ({
+  ...rest,
+  number: Number(number) || null,
+  statusIds: statusId ? [statusId] : [],
+  paymentStatusIds: paymentStatusId ? [paymentStatusId] : [],
+  createdFrom: days ? new Date(Date.now() - days * 864e5).toISOString() : null,
+});
 const search = usePagedSearch(
-  ({ days, statusId, paymentStatusId, number, ...rest }) => searchOrders({
-    ...rest,
-    number: Number(number) || null,
-    statusIds: statusId ? [statusId] : [],
-    paymentStatusIds: paymentStatusId ? [paymentStatusId] : [],
-    createdFrom: days ? new Date(Date.now() - days * 864e5).toISOString() : null,
-  }),
+  (f) => searchOrders(toQuery(f)),
   { number: '', statusId: '', paymentStatusId: '', days: 30, sort: 'newest' },
 );
 const { filters } = search;
+
+// CSV de todos os pedidos do filtro atual, não só da página: percorre a busca de 100 em 100.
+const CSV_MAX_PAGES = 100;
+const exportCsv = useAction(async () => {
+  const query = toQuery(filters);
+  const all = [];
+  for (let page = 1; page <= CSV_MAX_PAGES; page += 1) {
+    const result = await searchOrders({ ...query, page, pageSize: PAGE_SIZE_MAX });
+    all.push(...result.items);
+    if (page >= result.pages) break;
+  }
+  downloadCsv('pedidos-vitrine', ['pedido', 'data', 'cliente', 'status', 'pagamento', 'total'], all.map((o) => [
+    `#${o.number}`, formatDateTime(o.createdAt), o.customerName ?? `Cliente #${o.customerId}`,
+    ORDER_STATUS[o.statusId]?.label ?? o.status, PAYMENT_STATUS[o.paymentStatusId]?.label ?? o.paymentStatus, csvMoney(o.totalAmount),
+  ]));
+});
 
 // ------------------------------------------------------------- detalhe ---
 const openId = ref(Number(props.params.id) || null);
@@ -96,6 +120,7 @@ const blankForms = () => ({
   pay: { transactionMethodId: 1, gatewayReference: '', note: '' },
   ship: { shipmentTypeId: '', carrierName: '', trackingCode: '', estimatedDate: '', note: '' },
   cancel: { reason: '' },
+  refund: { operationId: null, reference: '', note: '' },
 });
 const forms = reactive(blankForms());
 const resetForms = () => Object.assign(forms, blankForms());
@@ -136,6 +161,22 @@ const submitShip = () => {
   }));
 };
 const submitCancel = () => run((id) => cancelOrder(id, forms.cancel.reason.trim()));
+
+// Andamento do estorno/cancelamento da cobrança. O back processa sozinho; a equipe só
+// reagenda uma falha ou confirma um estorno manual já devolvido fora do sistema.
+const operations = computed(() => (order.value?.paymentOperations ?? []).map((op) => ({
+  ...op, kindId: paymentOperationCode(op.kind), statusId: paymentOperationCode(op.status),
+})));
+const operationBlocked = computed(() => denied('orders.cancel', 'cancelar pedidos') ?? denied('orders.refund', 'estornar pedidos pagos'));
+const retryOperation = (op) => run((id) => retryPaymentOperation(id, op.id));
+const openManualRefund = (op) => {
+  Object.assign(forms.refund, { operationId: op.id, reference: '', note: '' });
+  openModal('refund');
+};
+const submitManualRefund = () => run((id) => confirmManualRefund(id, forms.refund.operationId, {
+  reference: forms.refund.reference.trim(),
+  note: forms.refund.note.trim(),
+}));
 
 const withShipment = computed(() => Boolean(forms.ship.shipmentTypeId));
 const timeline = computed(() => [...(order.value?.history ?? [])].reverse());
@@ -241,7 +282,42 @@ const changeText = (h) => (h.fromStatusId ? `${h.fromStatus} → ${h.toStatus}` 
           {{ s.label }}
         </option>
       </select>
+      <div class="ds-toolbar__actions">
+        <button
+          type="button"
+          class="ds-btn ds-btn--secondary"
+          :disabled="!search.items.value.length || exportCsv.isPending.value"
+          :aria-busy="exportCsv.isPending.value"
+          @click="exportCsv.run()"
+        >
+          <span
+            v-if="exportCsv.isPending.value"
+            class="ds-spinner"
+            aria-hidden="true"
+          />
+          <Download
+            v-else
+            class="ds-btn__icon"
+            :size="16"
+            :stroke-width="1.5"
+            aria-hidden="true"
+          />
+          Exportar CSV
+        </button>
+      </div>
     </div>
+    <p
+      v-if="exportCsv.error.value"
+      class="ds-error"
+      role="alert"
+    >
+      <AlertCircle
+        :size="16"
+        :stroke-width="1.5"
+        aria-hidden="true"
+      />
+      Não foi possível exportar: {{ messageOf(exportCsv.error.value) }}
+    </p>
 
     <section class="ds-grid ds-grid--split">
       <div class="ds-card ds-card--flush ds-min-0">
@@ -445,6 +521,68 @@ const changeText = (h) => (h.fromStatusId ? `${h.fromStatus} → ${h.toStatus}` 
                 v-if="order.paymentExpiresAt && order.statusId === 1"
                 class="ds-text-xs ds-text-secondary"
               >Vence em {{ formatDateTime(order.paymentExpiresAt) }}</span>
+            </div>
+
+            <div
+              v-if="operations.length"
+              class="ds-stack--2 ds-text-sm"
+            >
+              <span class="ds-label-caps">Estorno e cancelamento da cobrança</span>
+              <div
+                v-for="op in operations"
+                :key="op.id"
+                class="ds-stack--1"
+              >
+                <span class="ds-cluster ds-cluster--2">
+                  <span class="ds-text-medium">{{ PAYMENT_OPERATION_KIND[op.kindId]?.label ?? 'Operação' }} · {{ brl(op.amount) }}</span>
+                  <StatusBadge
+                    :id="op.statusId"
+                    :table="PAYMENT_OPERATION_STATUS"
+                    :dot="false"
+                  />
+                </span>
+                <span
+                  v-if="op.reference || op.completedAt"
+                  class="ds-text-xs ds-text-secondary"
+                >{{ op.reference ? `Ref. ${op.reference}` : '' }}{{ op.reference && op.completedAt ? ' · ' : '' }}{{ op.completedAt ? `concluído em ${formatDateTime(op.completedAt)}` : '' }}</span>
+                <span
+                  v-if="op.statusId === PAYMENT_OPERATION_AWAITING_MANUAL"
+                  class="ds-hint"
+                >Devolva o dinheiro ao cliente fora do sistema e confirme aqui com o comprovante.</span>
+                <span
+                  v-else-if="op.statusId === PAYMENT_OPERATION_REVIEW"
+                  class="ds-hint"
+                >Faltam dados para concluir no provedor. Confira a conexão de pagamento em Integrações.</span>
+                <span
+                  v-else-if="op.statusId === PAYMENT_OPERATION_UNKNOWN"
+                  class="ds-hint"
+                >O provedor não confirmou o resultado. O sistema consulta de novo sozinho; não refaça o estorno.</span>
+                <div
+                  v-if="[PAYMENT_OPERATION_FAILED, PAYMENT_OPERATION_AWAITING_MANUAL].includes(op.statusId)"
+                  class="ds-cluster ds-cluster--2"
+                >
+                  <button
+                    v-if="op.statusId === PAYMENT_OPERATION_FAILED"
+                    type="button"
+                    class="ds-btn ds-btn--secondary ds-btn--sm"
+                    :disabled="Boolean(operationBlocked) || transition.isPending.value"
+                    :title="operationBlocked"
+                    @click="retryOperation(op)"
+                  >
+                    Tentar de novo
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    class="ds-btn ds-btn--secondary ds-btn--sm"
+                    :disabled="Boolean(operationBlocked) || transition.isPending.value"
+                    :title="operationBlocked"
+                    @click="openManualRefund(op)"
+                  >
+                    Confirmar devolução
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div class="ds-stack--1 ds-text-sm">
@@ -777,6 +915,73 @@ const changeText = (h) => (h.fromStatusId ? `${h.fromStatus} → ${h.toStatus}` 
         :disabled="transition.isPending.value"
       >
         Cancelar pedido
+      </button>
+    </template>
+  </ModalDialog>
+
+  <ModalDialog
+    v-if="modal === 'refund' && order"
+    :title="`Confirmar devolução do pedido #${order.number}`"
+    @close="modal = null"
+  >
+    <form
+      id="refund-form"
+      class="ds-stack--4"
+      @submit.prevent="submitManualRefund"
+    >
+      <p class="ds-text-secondary">
+        Confirme só depois de devolver o dinheiro ao cliente. O registro fica com o seu usuário, a referência e a observação.
+      </p>
+      <div class="ds-field">
+        <label
+          class="ds-label"
+          for="rf-reference"
+        >Comprovante ou referência</label>
+        <input
+          id="rf-reference"
+          v-model="forms.refund.reference"
+          class="ds-input"
+          maxlength="200"
+          required
+          autofocus
+        >
+      </div>
+      <div class="ds-field">
+        <label
+          class="ds-label"
+          for="rf-note"
+        >Observação (opcional)</label>
+        <input
+          id="rf-note"
+          v-model="forms.refund.note"
+          class="ds-input"
+          maxlength="500"
+        >
+      </div>
+      <p
+        v-if="transition.error.value"
+        class="ds-error"
+        role="alert"
+      >
+        {{ messageOf(transition.error.value) }}
+      </p>
+    </form>
+    <template #footer>
+      <button
+        type="button"
+        class="ds-btn ds-btn--ghost"
+        @click="modal = null"
+      >
+        Voltar
+      </button>
+      <button
+        type="submit"
+        form="refund-form"
+        class="ds-btn ds-btn--primary"
+        :disabled="!forms.refund.reference.trim() || transition.isPending.value"
+        :aria-busy="transition.isPending.value"
+      >
+        Confirmar devolução
       </button>
     </template>
   </ModalDialog>

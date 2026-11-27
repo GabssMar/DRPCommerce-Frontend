@@ -6,6 +6,7 @@ import { href } from '../../router';
 import { admin, advanceDropOrder, dropNextStatuses } from '../../services/admin-api';
 import { ORDER_STATUS, PAYMENT_STATUS, options } from '../../services/status';
 import { brl, dropOrderCode, formatDateTime, initials, localDayKey, shortName } from '../../services/format';
+import { csvMoney, downloadCsv } from '../../services/csv';
 import LoadState from '../ui/LoadState.vue';
 import PaginationNav from '../ui/PaginationNav.vue';
 import StatusBadge from '../ui/StatusBadge.vue';
@@ -105,17 +106,9 @@ const exportCsv = () => {
   const header = ['pedido', 'data', 'cliente', 'status', 'pagamento', 'total'];
   const lines = rows.value.map((o) => [
     dropOrderCode(o.id), formatDateTime(o.createdAt), customerOf(o.customerId)?.fullName ?? o.customerId,
-    ORDER_STATUS[o.dropOrderStatusId]?.label, PAYMENT_STATUS[o.dropOrderPaymentStatusId]?.label, o.totalAmount.toFixed(2).replace('.', ','),
+    ORDER_STATUS[o.dropOrderStatusId]?.label, PAYMENT_STATUS[o.dropOrderPaymentStatusId]?.label, csvMoney(o.totalAmount),
   ]);
-  const csv = [header, ...lines].map((l) => l.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
-  // BOM: o Excel abre o CSV em UTF-8 sem estragar os acentos.
-  const BOM = String.fromCharCode(0xfeff);
-  const url = URL.createObjectURL(new Blob([BOM + csv], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `pedidos-drop-${localDayKey(Date.now())}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsv('pedidos-drop', header, lines);
 };
 </script>
 
