@@ -8,7 +8,7 @@ import {
   createCoupon, listConditionOperators, listConditionTypes, searchCoupons, setCouponActivation, updateCoupon, validateCoupon,
 } from '../../services/admin-catalog-api';
 import { fieldMessage } from '../../services/api-error';
-import { COUPON_AVAILABILITY, COUPON_TYPE, options } from '../../services/status';
+import { COUPON_AVAILABILITY, COUPON_TYPE, conditionNeedsSecondValue, isMonetaryCondition, options } from '../../services/status';
 import { brl, formatDate, formatNumber, fromDateInput, percent, toDateInput } from '../../services/format';
 import CatalogTabs from './CatalogTabs.vue';
 import AdminDropCoupons from './AdminDropCoupons.vue';
@@ -43,9 +43,8 @@ const catalog = useAsync(async () => {
 });
 const types = computed(() => catalog.data.value?.types ?? []);
 const operators = computed(() => catalog.data.value?.operators ?? []);
-const operatorOf = (id) => operators.value.find((o) => o.id === id);
-const needsSecond = (operatorId) => /entre| e /i.test(operatorOf(operatorId)?.description ?? '');
-const isMoney = (typeId) => /valor|gasto/i.test(types.value.find((t) => t.id === typeId)?.description ?? '');
+const needsSecond = conditionNeedsSecondValue;
+const isMoney = isMonetaryCondition;
 
 const discountLabel = (c) => {
   const value = c.typeId === 1 ? `${formatNumber(c.discountValue)}%` : brl(c.discountValue);
@@ -397,7 +396,7 @@ const simulate = useAction(async () => {
               role="alert"
             >
               <AlertCircle
-                :size="14"
+                :size="16"
                 :stroke-width="1.5"
                 aria-hidden="true"
               />

@@ -101,7 +101,7 @@ const save = useAction(async () => {
           >
             <AlertCircle
               v-if="errors.currencyCode"
-              :size="14"
+              :size="16"
               :stroke-width="1.5"
               aria-hidden="true"
             />
@@ -131,7 +131,7 @@ const save = useAction(async () => {
           >
             <AlertCircle
               v-if="errors.minOrderValue"
-              :size="14"
+              :size="16"
               :stroke-width="1.5"
               aria-hidden="true"
             />
@@ -161,7 +161,7 @@ const save = useAction(async () => {
           >
             <AlertCircle
               v-if="errors.maxItemsPerOrder"
-              :size="14"
+              :size="16"
               :stroke-width="1.5"
               aria-hidden="true"
             />
@@ -192,7 +192,7 @@ const save = useAction(async () => {
           >
             <AlertCircle
               v-if="errors.pendingOrderExpirationMinutes"
-              :size="14"
+              :size="16"
               :stroke-width="1.5"
               aria-hidden="true"
             />

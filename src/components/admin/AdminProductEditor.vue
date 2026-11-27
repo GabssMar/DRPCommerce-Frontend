@@ -205,7 +205,7 @@ const saved = (action) => action.done.value && !action.error.value;
         >
           <AlertCircle
             v-if="fieldMessage(create.error.value, 'slug', CONFLICTS)"
-            :size="14"
+            :size="16"
             :stroke-width="1.5"
             aria-hidden="true"
           />
@@ -233,7 +233,7 @@ const saved = (action) => action.done.value && !action.error.value;
           role="alert"
         >
           <AlertCircle
-            :size="14"
+            :size="16"
             :stroke-width="1.5"
             aria-hidden="true"
           />
@@ -310,7 +310,7 @@ const saved = (action) => action.done.value && !action.error.value;
           role="alert"
         >
           <AlertCircle
-            :size="14"
+            :size="16"
             :stroke-width="1.5"
             aria-hidden="true"
           />
@@ -448,7 +448,7 @@ const saved = (action) => action.done.value && !action.error.value;
             role="alert"
           >
             <AlertCircle
-              :size="14"
+              :size="16"
               :stroke-width="1.5"
               aria-hidden="true"
             />
@@ -476,7 +476,7 @@ const saved = (action) => action.done.value && !action.error.value;
             role="alert"
           >
             <AlertCircle
-              :size="14"
+              :size="16"
               :stroke-width="1.5"
               aria-hidden="true"
             />
@@ -625,7 +625,7 @@ const saved = (action) => action.done.value && !action.error.value;
           >
             <AlertCircle
               v-if="priceError"
-              :size="14"
+              :size="16"
               :stroke-width="1.5"
               aria-hidden="true"
             />

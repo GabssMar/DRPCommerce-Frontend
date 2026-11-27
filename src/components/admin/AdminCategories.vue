@@ -392,7 +392,7 @@ const indent = (level) => '— '.repeat(level - 1);
         >
           <AlertCircle
             v-if="fieldMessage(save.error.value, 'slug', CONFLICTS)"
-            :size="14"
+            :size="16"
             :stroke-width="1.5"
             aria-hidden="true"
           />

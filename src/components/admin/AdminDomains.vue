@@ -143,7 +143,7 @@ const actionError = computed(() => messageOf(verify.error.value || publish.error
         >
           <AlertCircle
             v-if="hostError || add.error.value"
-            :size="14"
+            :size="16"
             :stroke-width="1.5"
             aria-hidden="true"
           />

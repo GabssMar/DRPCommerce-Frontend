@@ -370,7 +370,7 @@ const removeMessage = computed(() => {
             role="alert"
           >
             <AlertCircle
-              :size="14"
+              :size="16"
               :stroke-width="1.5"
               aria-hidden="true"
             />
