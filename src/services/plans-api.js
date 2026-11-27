@@ -34,7 +34,8 @@ export const planHighlights = (entitlements) => {
   if (themes.length) items.push(`Temas: ${themes.join(' e ')}`);
   if (e.allowsFullCustomization) items.push('Personalização completa do tema');
   else if (e.allowsLogoCustomization) items.push('Logo próprio');
-  if (e.allowsCustomDomain) items.push('Domínio próprio');
+  // Ainda não funciona com a loja no caminho do site (aba Domínios escondida no painel).
+  if (e.allowsCustomDomain) items.push('Domínio próprio (em breve)');
   return items;
 };
 
