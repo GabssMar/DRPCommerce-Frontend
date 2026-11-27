@@ -13,7 +13,10 @@ import { initials } from '../../services/format';
 import AdminLogin from './AdminLogin.vue';
 import AdminEnterpriseChoice from './AdminEnterpriseChoice.vue';
 import AdminInviteAccept from './AdminInviteAccept.vue';
-import RequestLog from './RequestLog.vue';
+// Ferramenta de desenvolvimento: lista URLs e corpos das requisições. Fica fora do build
+// (import.meta.env.DEV vira false e o import() some do pacote).
+const SHOW_REQUEST_LOG = import.meta.env.DEV;
+const RequestLog = SHOW_REQUEST_LOG ? defineAsyncComponent(() => import('./RequestLog.vue')) : null;
 
 // Cada tela do painel é um pedaço separado do build, baixado só quando é aberta.
 const AdminDashboard = defineAsyncComponent(() => import('./AdminDashboard.vue'));
@@ -292,7 +295,7 @@ const logout = () => logoutEmployee().catch(() => {});
             :params="route.params"
           />
 
-          <RequestLog />
+          <RequestLog v-if="SHOW_REQUEST_LOG" />
         </main>
       </div>
     </div>
