@@ -1,0 +1,31 @@
+name: drp-front
+
+# Front estático na VM do Gateway (YARP). Só a rede privada alcança a porta:
+# o Gateway encaminha para http://BIND_IP:FRONT_PORT/ tudo o que não é /api ou /health.
+services:
+  front:
+    image: ${FRONT_IMAGE:?Defina FRONT_IMAGE no arquivo .env}
+    platform: linux/arm64
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${BIND_IP:-10.0.0.7}:${FRONT_PORT:-8081}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

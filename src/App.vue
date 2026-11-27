@@ -5,7 +5,7 @@ import { IS_MOCK } from './services/config';
 import { useDropQueue } from './composables/useDropQueue';
 import { dropPhase, getDropEvent, listPublicDrops, QUEUE_STATUS } from './services/client-api';
 import { useServerNow } from './composables/useNow';
-import { ADMIN_ENABLED } from './services/config';
+import { ADMIN_ENABLED, HAS_STORE } from './services/config';
 import { currentEnterpriseId, isSignedIn, REALMS } from './services/session';
 import { getPublicStore, listMyEnterprises } from './services/admin-api';
 import { focusMain, href, isAdminRoute, navigate, redirect, route } from './router';
@@ -50,12 +50,15 @@ const showAdmin = computed(() => ADMIN_ENABLED && isAdminRoute(route.value));
 // Sem sessão de cliente, #/entrar e #/criar-conta mostram o formulário e
 // qualquer outra rota da loja mostra o login; depois de entrar, a rota pedida
 // aparece. Com sessão de cliente, #/entrar e #/criar-conta voltam ao portal.
+// Fora de uma loja (www.drpcommerce.com.br/, sem slug no caminho) o site é a plataforma:
+// só a página de visitas e o painel. Cliente entra e compra pelo endereço da loja.
 const GUEST_ROUTES = ['login', 'register'];
-const customerSignedIn = computed(() => isSignedIn(REALMS.storefront));
+const customerSignedIn = computed(() => HAS_STORE && isSignedIn(REALMS.storefront));
 const employeeSignedIn = computed(() => ADMIN_ENABLED && isSignedIn(REALMS.backoffice));
 const showGuest = computed(() => !customerSignedIn.value || GUEST_ROUTES.includes(route.value.name));
 watch([customerSignedIn, employeeSignedIn, route], ([customer, employee, r]) => {
-  if (customer && GUEST_ROUTES.includes(r.name)) navigate('/');
+  if (!HAS_STORE && !isAdminRoute(r) && r.name !== 'portal') navigate('/');
+  else if (customer && GUEST_ROUTES.includes(r.name)) navigate('/');
   else if (!customer && employee && r.name === 'portal' && r.path === '/') navigate('/admin');
 }, { immediate: true });
 
@@ -151,7 +154,7 @@ const loadEventDetailData = async (eventId) => {
 watch([selectedEventId, currentPage], ([eventId, page]) => {
   if (page === 'detail') {
     loadEventDetailData(eventId);
-  } else if (page === 'portal') {
+  } else if (page === 'portal' && HAS_STORE) {
     loadPortalData();
   }
 }, { immediate: true });
@@ -267,16 +270,18 @@ const dropBadge = computed(() => {
           class="ds-btn ds-btn--ghost ds-btn--sm"
           :href="href('/admin')"
         >Sou lojista</a>
-        <a
-          class="ds-btn ds-btn--secondary ds-btn--sm"
-          :href="href('/entrar')"
-          :aria-current="route.name === 'login' ? 'page' : undefined"
-        >Entrar</a>
-        <a
-          class="ds-btn ds-btn--primary ds-btn--sm"
-          :href="href('/criar-conta')"
-          :aria-current="route.name === 'register' ? 'page' : undefined"
-        >Criar conta</a>
+        <template v-if="HAS_STORE">
+          <a
+            class="ds-btn ds-btn--secondary ds-btn--sm"
+            :href="href('/entrar')"
+            :aria-current="route.name === 'login' ? 'page' : undefined"
+          >Entrar</a>
+          <a
+            class="ds-btn ds-btn--primary ds-btn--sm"
+            :href="href('/criar-conta')"
+            :aria-current="route.name === 'register' ? 'page' : undefined"
+          >Criar conta</a>
+        </template>
       </div>
     </header>
     <main

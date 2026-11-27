@@ -4,11 +4,11 @@ import {
   BadgeDollarSign, LayoutDashboard, LogOut, Package, Plug, Radio, Receipt, Rocket, Settings, ShieldAlert, Users, Wallet,
 } from '@lucide/vue';
 import { focusMain, href, navigate, route } from '../../router';
-import { IS_MOCK } from '../../services/config';
-import { getAccessToken, hasSelectedEnterprise, isSignedIn, REALMS, tokenClaims } from '../../services/session';
+import { IS_MOCK, storeHomePath } from '../../services/config';
+import { currentEnterpriseId, getAccessToken, hasSelectedEnterprise, isSignedIn, REALMS, tokenClaims } from '../../services/session';
 import { logoutEmployee, restoreSession } from '../../services/auth';
 import { usePermissions } from '../../composables/usePermissions';
-import { getCurrentEmployee } from '../../services/admin-api';
+import { getCurrentEmployee, listMyEnterprises, storefrontSlugOf } from '../../services/admin-api';
 import { initials } from '../../services/format';
 import AdminLogin from './AdminLogin.vue';
 import AdminEnterpriseChoice from './AdminEnterpriseChoice.vue';
@@ -120,9 +120,24 @@ const pageKey = computed(() => {
   return `${TAB_PAGES.has(name) ? `${name}/${params.id ?? ''}` : path}@${membershipKey.value}`;
 });
 
+// Nome da loja da sessão na topbar e "Ver loja", o endereço público dela (/nome-da-loja/).
+// "Ver loja" some sem slug conhecido.
+const storeName = ref('');
+const storeHome = ref('');
 watch(membershipKey, async (key) => {
   employee.value = null;
-  if (key) employee.value = await getCurrentEmployee().catch(() => null);
+  storeName.value = '';
+  storeHome.value = '';
+  if (!key) return;
+  const [current, mine] = await Promise.all([
+    getCurrentEmployee().catch(() => null),
+    listMyEnterprises().catch(() => []),
+  ]);
+  employee.value = current;
+  const enterprise = mine.find((e) => e.enterpriseId === currentEnterpriseId());
+  storeName.value = enterprise?.tradeName ?? '';
+  const slug = storefrontSlugOf(enterprise);
+  storeHome.value = slug ? storeHomePath(slug) : '';
 }, { immediate: true });
 
 onMounted(async () => {
@@ -179,7 +194,7 @@ const logout = () => logoutEmployee().catch(() => {});
             class="ds-topbar__brand"
             :href="href('/admin/dashboard')"
           >
-            Veloce <span class="ds-text-secondary">· painel da loja</span>
+            {{ storeName || 'DRP Commerce' }} <span class="ds-text-secondary">· painel da loja</span>
           </a>
           <span :class="['ds-badge', IS_MOCK ? 'ds-badge--scheduled' : 'ds-badge--done']">
             <span
@@ -194,8 +209,9 @@ const logout = () => logoutEmployee().catch(() => {});
             class="ds-cluster ds-cluster--2"
           >
             <a
+              v-if="storeHome"
               class="ds-btn ds-btn--ghost ds-btn--sm"
-              :href="href('/')"
+              :href="storeHome"
             >Ver loja</a>
             <span
               class="ds-avatar"

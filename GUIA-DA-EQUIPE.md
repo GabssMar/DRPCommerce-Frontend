@@ -97,7 +97,7 @@ frontend/
 
 | `VITE_API_MODE` | Comportamento |
 |---|---|
-| `http` (padrão) | Chama o Gateway (`https://localhost:5000`) pelo proxy do Vite. Abra o front em **http://teste.stores.localhost:5173** (a loja é identificada pelo subdomínio). É o único modo do build de produção |
+| `http` (padrão) | Chama o Gateway (`https://localhost:5000`) pelo proxy do Vite. Abra a loja em **http://localhost:5173/teste/** (o slug é o primeiro segmento do caminho) e o painel em **http://localhost:5173/#/admin**. É o único modo do build de produção |
 | `mock` | Só em `npm run dev` (o build recusa). Sem servidor. As funções de `services/` caem em `mock/server.js`. Login do cliente: `camila.duarte@exemplo.com` + qualquer senha. Login do lojista: qualquer e-mail e senha. Os dois começam deslogados e as sessões de exemplo sobrevivem ao F5 (`sessionStorage`). O painel mostra as requisições que **seriam** enviadas |
 
 ---
@@ -164,7 +164,7 @@ Legenda: ✅ testado com o back real · ⚠️ funciona, mas usa rota inadequada
 
 **Cliente (Minha conta, inscrição, lista de espera, checkout da vitrine)**
 
-Desde 23/11 o back identifica a loja pelo **slug no caminho** (`storefront/{slug}/...`), não mais pelo Host, o que elimina o 404 `Enterprise.Unavailable` que o Gateway causava. O front monta o caminho com `storefrontPath()` (`services/config.js`); o slug vem de `VITE_STORE_SLUG` ou do subdomínio (`teste.stores.localhost` → `teste`). As rotas abaixo foram validadas em 16/11 contornando o Gateway e ainda precisam ser testadas de novo com o slug:
+Desde 23/11 o back identifica a loja pelo **slug no caminho** (`storefront/{slug}/...`), não mais pelo Host, o que elimina o 404 `Enterprise.Unavailable` que o Gateway causava. O front monta o caminho com `storefrontPath()` (`services/config.js`); o slug vem de `VITE_STORE_SLUG` ou do primeiro segmento do caminho (`/teste/` → `teste`), como em produção (`https://www.drpcommerce.com.br/teste/`). As rotas abaixo foram validadas em 16/11 contornando o Gateway e ainda precisam ser testadas de novo com o slug:
 
 | Funcionalidade | Rota | Situação |
 |---|---|---|

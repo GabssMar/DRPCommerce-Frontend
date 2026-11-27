@@ -2,7 +2,8 @@
 import { reactive, watch } from 'vue';
 import { AlertCircle } from '@lucide/vue';
 import { useAsync, useAction } from '../../composables/useAsync';
-import { getPublicStore, listMyEnterprises, updateEnterprise } from '../../services/admin-api';
+import { getPublicStore, listMyEnterprises, storefrontSlugOf, updateEnterprise } from '../../services/admin-api';
+import { currentEnterpriseId } from '../../services/session';
 import { STATES } from '../../services/status';
 import LoadState from '../ui/LoadState.vue';
 
@@ -11,8 +12,10 @@ import LoadState from '../ui/LoadState.vue';
 // principal). O back ainda não tem GET dos dados completos: razão social e endereço
 // precisam ser informados de novo ao salvar.
 const data = useAsync(async () => {
-  const [mine, store] = await Promise.all([listMyEnterprises(), getPublicStore().catch(() => null)]);
-  return { enterprise: mine[0] ?? null, store };
+  const mine = await listMyEnterprises();
+  const enterprise = mine.find((e) => e.enterpriseId === currentEnterpriseId()) ?? mine[0] ?? null;
+  const store = await getPublicStore(storefrontSlugOf(enterprise)).catch(() => null);
+  return { enterprise, store };
 });
 
 const form = reactive({

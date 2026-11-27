@@ -14,8 +14,8 @@ export default defineConfig(({ command, mode }) => {
     server: {
       // Em dev, /api vai para o Commerce.Gateway (YARP). Não é usado com VITE_API_MODE=mock.
       // O Gateway local roda em HTTPS com certificado de desenvolvimento: secure: false.
-      // A loja do cliente vai no caminho (storefront/{slug}/...). Sem VITE_STORE_SLUG, o
-      // front usa o subdomínio como slug: abra em http://teste.stores.localhost:5173.
+      // A loja do cliente é o primeiro segmento do caminho, como em produção:
+      // http://localhost:5173/teste/ (o Vite devolve o index.html para qualquer caminho).
       proxy: {
         '/api': {
           target: env.VITE_GATEWAY_URL || 'https://localhost:5000',
@@ -23,8 +23,6 @@ export default defineConfig(({ command, mode }) => {
           secure: false,
         },
       },
-      // Libera os subdomínios das lojas no servidor de desenvolvimento.
-      allowedHosts: ['.stores.localhost'],
     },
   }
 })
