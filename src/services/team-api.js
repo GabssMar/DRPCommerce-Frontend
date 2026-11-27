@@ -55,6 +55,21 @@ export const inviteMember = ({ email, kindId, accessRoleIds }) =>
 export const revokeInvitation = (id) => request('DELETE', store(`invitations/${id}`), opts());
 export const acceptInvitation = (token) => request('POST', store('identity/invitations/accept'), opts({ token: token.trim() }));
 
+// ------------------------------------------------------------ DOMÍNIOS ---
+
+// Task 41. Só o dono principal. O valor do registro TXT vem só no add: a lista não o devolve.
+// [{ id, host, isPrimary, isVerified, isActive }]
+export const listDomains = () => request('GET', store('enterprise-domains/get-all'), opts());
+// { id, host, recordName, recordValue }
+export const addDomain = (host) => request('POST', store('enterprise-domains/add'), opts({ host }));
+// 204. 400 Domain.OwnershipUnverified (registro não encontrado) e 503 Domain.DnsUnavailable.
+export const verifyDomain = (id) => request('POST', store(`enterprise-domains/${id}/verify`), opts());
+// 204. Só publica domínio verificado; marcar outro como principal rebaixa o anterior.
+export const setDomainPublication = (id, { isPrimary, isActive }) =>
+  request('PUT', store(`enterprise-domains/${id}/publication`), opts({ isPrimary, isActive }));
+// 204. O principal não pode ser excluído (409 Domain.PrimaryProtected).
+export const deleteDomain = (id) => request('DELETE', store(`enterprise-domains/${id}`), opts());
+
 // ------------------------------------------------------ PROPRIEDADE ---
 
 // { id, token, expiresAt } (30 min). O back não lista transferências pendentes.

@@ -1298,6 +1298,68 @@ function settingsRoutes(method, path, body) {
   return ok(d['store/settings']);
 }
 
+// ---------------------------------------------------- DOMÍNIOS (task 41) ---
+
+const PLATFORM_DOMAIN = 'stores.localhost';
+
+// Mesmas regras do back: sem / : @, até 253 caracteres, rótulos de 1 a 63 sem hífen nas pontas.
+const validHost = (host) => host.length <= 253 && !/[/:@\s]/.test(host)
+  && host.split('.').every((label) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
+
+function domainRoutes(method, path, body) {
+  const d = data();
+  d['store/enterprise-domains'] ??= [
+    { id: 1, enterpriseId: 1, host: 'teste.stores.localhost', normalizedHost: 'teste.stores.localhost', isPrimary: true, isVerified: true, isActive: true },
+  ];
+  const domains = d['store/enterprise-domains'];
+  const publicView = (x) => ({ id: x.id, enterpriseId: x.enterpriseId, host: x.host, normalizedHost: x.normalizedHost, isPrimary: x.isPrimary, isVerified: x.isVerified, isActive: x.isActive });
+
+  if (path === 'enterprise-domains/get-all' && method === 'GET') return raw(domains.map(publicView));
+
+  if (path === 'enterprise-domains/add' && method === 'POST') {
+    const host = String(body?.host ?? '').trim().toLowerCase().replace(/\.$/, '');
+    if (!host || !validHost(host)) return problem(400, 'Validation.InvalidInput', 'O host informado é inválido.');
+    if (host === PLATFORM_DOMAIN || host.endsWith(`.${PLATFORM_DOMAIN}`)) return problem(400, 'Domain.PlatformDomainReserved', 'Este domínio pertence à plataforma.');
+    if (domains.some((x) => x.normalizedHost === host)) return problem(409, 'Domain.InUse', 'Este domínio já está cadastrado.');
+    const token = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+    const domain = { id: nextIdOf(domains), enterpriseId: 1, host, normalizedHost: host, isPrimary: false, isVerified: false, isActive: false, token, attempts: 0 };
+    domains.push(domain);
+    return raw({ id: domain.id, host, recordName: `_drpcommerce.${host}`, recordValue: `drpcommerce-verification=${token}` });
+  }
+
+  const match = path.match(/^enterprise-domains\/(\d+)(?:\/(verify|publication))?$/);
+  if (!match) return null;
+  const domain = domains.find((x) => x.id === Number(match[1]));
+  if (!domain) return problem(404, 'Domain.NotFound', 'Domínio não encontrado.');
+
+  if (match[2] === 'verify' && method === 'POST') {
+    if (domain.isVerified) return noContent();
+    if (domain.host.startsWith('dns.')) return problem(503, 'Domain.DnsUnavailable', 'Não foi possível consultar o DNS agora.');
+    // A primeira consulta ainda não enxerga o registro (propagação); a segunda enxerga.
+    domain.attempts += 1;
+    if (domain.attempts < 2) return problem(400, 'Domain.OwnershipUnverified', 'O registro TXT não foi encontrado.');
+    domain.isVerified = true;
+    return noContent();
+  }
+
+  if (match[2] === 'publication' && method === 'PUT') {
+    const { isPrimary, isActive } = body;
+    if (isPrimary && !isActive) return problem(400, 'Domain.PrimaryMustBeActive', 'O domínio principal precisa estar ativo.');
+    if (isActive && !domain.isVerified) return problem(400, 'Validation.InvalidInput', 'Verifique o domínio antes de publicar.');
+    if (domain.isPrimary && (!isPrimary || !isActive)) return problem(409, 'Domain.PrimaryProtected', 'O domínio principal não pode ser despublicado.');
+    if (isPrimary) domains.forEach((x) => { x.isPrimary = false; });
+    Object.assign(domain, { isPrimary: Boolean(isPrimary), isActive: Boolean(isActive) });
+    return noContent();
+  }
+
+  if (!match[2] && method === 'DELETE') {
+    if (domain.isPrimary) return problem(409, 'Domain.PrimaryProtected', 'O domínio principal não pode ser excluído.');
+    d['store/enterprise-domains'] = domains.filter((x) => x !== domain);
+    return noContent();
+  }
+  return null;
+}
+
 function storeBackoffice(method, path, body, who, query) {
   const d = data();
   if (path === 'auth/csrf') return raw({ requestToken: 'mock-csrf', headerName: 'X-CSRF-TOKEN' });
@@ -1404,6 +1466,8 @@ function storeBackoffice(method, path, body, who, query) {
   if (customersResult) return customersResult;
   const settingsResult = settingsRoutes(method, path, body);
   if (settingsResult) return settingsResult;
+  const domainsResult = domainRoutes(method, path, body);
+  if (domainsResult) return domainsResult;
 
   return null;
 }
