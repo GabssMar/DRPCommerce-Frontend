@@ -42,6 +42,11 @@ export const getProductBySlug = (slug) =>
 export const getCategoryBySlug = (slug) =>
   request('GET', sf(`categories/by-slug/${encodeURIComponent(slug)}`), anonymous);
 
+// Dados públicos da loja (PublicStoreInfoResponse): nome, contato, moeda, pedido mínimo e
+// limite de itens. `pendingOrderExpirationMinutes` só vem quando o back passar a expô-lo
+// (pendência registrada); sem ele, o checkout mostra o prazo depois de criar o pedido.
+export const getStoreInfo = () => request('GET', sf('store'), anonymous);
+
 // A árvore muda pouco: uma busca por carga da página, compartilhada pelas telas.
 let treePromise = null;
 export const getCategoryTree = () => {

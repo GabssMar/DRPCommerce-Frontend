@@ -74,6 +74,15 @@ export const durationParts = (ms) => {
   return { days: Math.floor(total / 1440), hours: Math.floor((total % 1440) / 60), minutes: total % 60 };
 };
 
+// Prazo em minutos por extenso: 45 min · 1 h · 1 h 30 min · 2 dias.
+export const formatMinutes = (minutes) => {
+  const { days, hours, minutes: rest } = durationParts(Math.max(0, Number(minutes) || 0) * 60000);
+  if (days && !hours && !rest) return days === 1 ? '1 dia' : `${days} dias`;
+  const totalHours = days * 24 + hours;
+  if (!totalHours) return `${rest} min`;
+  return rest ? `${totalHours} h ${rest} min` : `${totalHours} h`;
+};
+
 export const initials = (name = '') =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
 
