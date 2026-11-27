@@ -1,0 +1,78 @@
+# Imagem Docker do front (ARM64, para as VMs Ampere da Oracle) no GitHub Container Registry.
+#
+#   push na main      -> gera e publica ghcr.io/<dono>/drpcommerce-frontend com as tags
+#                        latest, sha-<commit> e <AAAA.MM.DD>-<commit>
+#   pull request      -> só gera (confere que o Dockerfile, o ds:check e o build passam)
+#   manual (Actions)  -> igual ao push na main
+#
+# O runner ubuntu-24.04-arm é ARM64 nativo: nada de emulação no build.
+name: Imagem do front
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: imagem-front-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  imagem:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login no GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/drpcommerce-frontend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value={{date 'YYYY.MM.DD' tz='America/Sao_Paulo'}}-{{sha}},enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=DRPCommerce Front
+            org.opencontainers.image.description=Front do DRPCommerce (Vite + nginx sem root)
+
+      - name: Build (e publicação fora de PR)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resumo
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### Imagem publicada"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo "Na VM: ajuste FRONT_IMAGE no .env e rode \`docker compose pull && docker compose up -d\`."
+          } >> "$GITHUB_STEP_SUMMARY"

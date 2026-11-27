@@ -3,7 +3,9 @@
 # da máquina que constrói ($BUILDPLATFORM): o resultado são arquivos estáticos,
 # iguais em qualquer arquitetura, e assim não há emulação no `npm ci`.
 #
-#   docker buildx build --platform linux/arm64 --load -t drpcommerce/front:oracle-arm64 .
+#   docker buildx build --platform linux/arm64 --load -t drpcommerce/front:AAAA.MM.DD .
+#
+# Na main, o GitHub Actions gera e publica a imagem no GHCR (.github/workflows/imagem-front.yml).
 #
 # As variáveis VITE_* ficam gravadas no build: para mudar, gere a imagem de novo.
 
